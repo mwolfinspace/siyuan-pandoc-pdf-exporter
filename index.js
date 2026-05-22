@@ -263,9 +263,16 @@ function buildStyle(settings, forExport) {
     .pp-page-body h2 { font-size: calc(var(--pp-content-font-size) * 1.45); }
     .pp-page-body h3 { font-size: calc(var(--pp-content-font-size) * 1.25); }
     .pp-page-body h4 { font-size: calc(var(--pp-content-font-size) * 1.12); }
-    .pp-page-body strong, .pp-page-body b { font-weight: 700 !important; }
-    .pp-page-body em, .pp-page-body i { font-style: italic !important; }
-    .pp-page-body u { text-decoration: underline !important; }
+    .pp-page-body strong, .pp-page-body b,
+    .pp-page-body [data-type="strong"], .pp-page-body [data-type="b"],
+    .pp-page-body [style*="font-weight: bold"], .pp-page-body [style*="font-weight:bold"],
+    .pp-page-body [style*="font-weight: 700"], .pp-page-body [style*="font-weight:700"] { font-weight: 700 !important; }
+    .pp-page-body em, .pp-page-body i,
+    .pp-page-body [data-type="em"], .pp-page-body [data-type="i"],
+    .pp-page-body [style*="font-style: italic"], .pp-page-body [style*="font-style:italic"] { font-style: italic !important; }
+    .pp-page-body u,
+    .pp-page-body [data-type="u"],
+    .pp-page-body [style*="text-decoration: underline"], .pp-page-body [style*="text-decoration:underline"] { text-decoration: underline !important; }
     .pp-page-body p {
       margin-top: 0;
       margin-bottom: var(--pp-paragraph-spacing);
