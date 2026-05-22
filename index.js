@@ -188,7 +188,7 @@ function normalizeSettings(raw) {
 
 function buildStyle(settings, forExport) {
   const paper = getPaper(settings);
-  const fontFamily = settings.fontFamily ? `"${settings.fontFamily.replace(/"/g, '\\"')}", sans-serif` : "var(--b3-font-family-protyle, var(--b3-font-family), sans-serif)";
+  const fontFamily = settings.fontFamily ? `"${settings.fontFamily.replace(/"/g, '\\"')}", "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif` : (forExport ? '"Times New Roman", Times, serif, "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji"' : "var(--b3-font-family-protyle, var(--b3-font-family), sans-serif)");
   const contentFontSize = Number(settings.contentFontSize) || DEFAULT_SETTINGS.contentFontSize;
   const titleFontSize = Number(settings.titleFontSize) || DEFAULT_SETTINGS.titleFontSize;
   const imageWidth = Math.max(10, Math.min(100, Number(settings.imageWidth) || 100));
@@ -294,11 +294,11 @@ function buildStyle(settings, forExport) {
     .pp-page-body figure { margin: 0.35cm 0; }
     .pp-page-body table { width: 100%; border-collapse: collapse; page-break-inside: auto; }
     .pp-page-body :where(th, td) { border: 1px solid #d0d7de; padding: 0.12cm 0.18cm; vertical-align: top; }
-    .pp-page-body :where(pre, code) { font-family: var(--b3-font-family-code, Consolas, monospace); }
+    .pp-page-body :where(pre, code) { font-family: ${forExport ? "Consolas, \"Courier New\", monospace" : "var(--b3-font-family-code, Consolas, monospace)"}; }
     .pp-page-body pre { white-space: pre-wrap; background: #f6f8fa; padding: 0.25cm; border-radius: 4px; }
     .pp-page-body blockquote { margin-left: 0; padding-left: 0.35cm; border-left: 3px solid #c8ccd0; color: #4c5560; }
     .pp-page-mark {
-      ${forExport ? "position: fixed;" : "position: absolute;"}
+      position: absolute;
       left: var(--pp-margin-left);
       right: var(--pp-margin-right);
       display: grid;
@@ -308,14 +308,13 @@ function buildStyle(settings, forExport) {
       color: #69707a;
       line-height: 1.25;
       pointer-events: none;
-      ${forExport ? "z-index: 10;" : ""}
+      z-index: 10;
     }
     .pp-page-mark[data-vpos="top"] { top: 0.52cm; }
     .pp-page-mark[data-vpos="bottom"] { bottom: 0.52cm; }
     .pp-page-mark__left { text-align: left; }
     .pp-page-mark__center { text-align: center; }
     .pp-page-mark__right { text-align: right; }
-    ${forExport ? `.pp-page-num::after { content: counter(page); }` : ""}
   `;
 }
 
@@ -334,44 +333,24 @@ function resolveImagePaths(html, dataDir) {
   });
 }
 
-function buildExportPageMark(settings, kind, context) {
-  const enabled = kind === "header" ? settings.headerEnabled : settings.footerEnabled;
-  if (!enabled) return "";
-  const prefix = kind === "header" ? "header" : "footer";
-  const fields = ["Left", "Center", "Right"].map((slot) => settings[`${prefix}${slot}`] || "");
-  if (!fields.some((f) => f.trim())) return "";
-  const ctx = Object.assign({}, context, {
-    page: settings.pageNumber ? "counter(page)" : "",
-    pages: settings.pageNumber ? String(context.pages) : "",
-  });
-  const expanded = fields.map((field) => {
-    let t = expandTokens(field, ctx);
-    // Replace literal "counter(page)" text with counter span
-    t = t.replace(/counter\(page\)/g, '<span class="pp-page-num"></span>');
-    return markdownLinks(normalizeMarkText(t));
-  });
-  if (!expanded.some((f) => f.trim())) return "";
-  const vpos = kind === "header" ? "top" : "bottom";
-  return `<div class="pp-page-mark" data-vpos="${vpos}">
-    <span class="pp-page-mark__left">${expanded[0]}</span>
-    <span class="pp-page-mark__center">${expanded[1]}</span>
-    <span class="pp-page-mark__right">${expanded[2]}</span>
-  </div>`;
-}
-
 function buildExportHtml(documentData, settings, pageCount, pageHtmls) {
   const cleaned = cleanPreviewHtml(documentData.html);
-  const pages = (pageHtmls && pageHtmls.length ? pageHtmls : [
+  const totalPages = pageCount || (pageHtmls ? pageHtmls.length : 1);
+  const pageContents = (pageHtmls && pageHtmls.length ? pageHtmls : [
     `${settings.includeTitle ? `<h1 class="pp-document-title">${escapeHtml(documentData.title)}</h1>` : ""}${cleaned}`,
-  ]).map((html) => ({ html }));
-  const body = pages.map((page) => `
+  ]);
+  const body = pageContents.map((html, index) => {
+    const pageNum = index + 1;
+    const ctx = { title: documentData.title, page: pageNum, pages: totalPages };
+    const header = buildPageMarkHtml(settings, "header", ctx);
+    const footer = buildPageMarkHtml(settings, "footer", ctx);
+    return `
     <section class="pp-export-page">
-      <div class="pp-page-body">${page.html}</div>
-    </section>
-  `).join("");
-  const ctx = { title: documentData.title, pages: pageCount || 1 };
-  const header = buildExportPageMark(settings, "header", ctx);
-  const footer = buildExportPageMark(settings, "footer", ctx);
+      ${header}
+      <div class="pp-page-body">${html}</div>
+      ${footer}
+    </section>`;
+  }).join("");
 
   return `<!doctype html>
 <html>
@@ -381,8 +360,6 @@ function buildExportHtml(documentData, settings, pageCount, pageHtmls) {
   <style>${buildStyle(settings, true)}</style>
 </head>
 <body>
-  ${header}
-  ${footer}
   ${body}
 </body>
 </html>`;
