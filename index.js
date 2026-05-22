@@ -795,7 +795,12 @@ module.exports = class PandocPdfExporterPlugin extends Plugin {
   }
 
   onunload() {
+    clearTimeout(this.previewTimer);
     console.log(`[${PLUGIN_NAME}] unloaded`);
+  }
+
+  uninstall() {
+    this.removeData(SETTINGS_FILE);
   }
 
   async loadSettings() {
