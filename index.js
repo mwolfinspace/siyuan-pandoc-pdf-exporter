@@ -310,8 +310,8 @@ function buildStyle(settings, forExport) {
       pointer-events: none;
       z-index: 10;
     }
-    .pp-page-mark[data-vpos="top"] { ${forExport ? "top: var(--pp-margin-top);" : "top: 0.52cm;"} }
-    .pp-page-mark[data-vpos="bottom"] { ${forExport ? "bottom: var(--pp-margin-bottom);" : "bottom: 0.52cm;"} }
+    .pp-page-mark[data-vpos="top"] { top: 0.52cm; }
+    .pp-page-mark[data-vpos="bottom"] { bottom: 0.52cm; }
     .pp-page-mark__left { text-align: left; }
     .pp-page-mark__center { text-align: center; }
     .pp-page-mark__right { text-align: right; }
