@@ -188,7 +188,7 @@ function normalizeSettings(raw) {
 
 function buildStyle(settings, forExport) {
   const paper = getPaper(settings);
-  const fontFamily = settings.fontFamily ? `"${settings.fontFamily.replace(/"/g, '\\"')}", "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif` : (forExport ? '"Times New Roman", Times, serif, "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji"' : "var(--b3-font-family-protyle, var(--b3-font-family), sans-serif)");
+  const fontFamily = settings.fontFamily ? `"${settings.fontFamily.replace(/"/g, '\\"')}", sans-serif` : (forExport ? "sans-serif" : "var(--b3-font-family-protyle, var(--b3-font-family), sans-serif)");
   const contentFontSize = Number(settings.contentFontSize) || DEFAULT_SETTINGS.contentFontSize;
   const titleFontSize = Number(settings.titleFontSize) || DEFAULT_SETTINGS.titleFontSize;
   const imageWidth = Math.max(10, Math.min(100, Number(settings.imageWidth) || 100));
@@ -333,10 +333,21 @@ function resolveImagePaths(html, dataDir) {
   });
 }
 
+function stripSiYuanStyles(html) {
+  return html.replace(/\sstyle\s*=\s*"([^"]*)"/gi, (match, value) => {
+    const cleaned = value.split(";").map((decl) => {
+      const trimmed = decl.trim();
+      if (!trimmed || /var\(\s*--b3-/i.test(trimmed)) return "";
+      return decl;
+    }).join(";").replace(/;\s*;/g, ";").replace(/;\s*$/, "").trim();
+    return cleaned ? ` style="${cleaned}"` : "";
+  });
+}
+
 function buildExportHtml(documentData, settings, pageCount, pageHtmls) {
-  const cleaned = cleanPreviewHtml(documentData.html);
+  const cleaned = stripSiYuanStyles(cleanPreviewHtml(documentData.html));
   const totalPages = pageCount || (pageHtmls ? pageHtmls.length : 1);
-  const pageContents = (pageHtmls && pageHtmls.length ? pageHtmls : [
+  const pageContents = (pageHtmls && pageHtmls.length ? pageHtmls.map(stripSiYuanStyles) : [
     `${settings.includeTitle ? `<h1 class="pp-document-title">${escapeHtml(documentData.title)}</h1>` : ""}${cleaned}`,
   ]);
   const body = pageContents.map((html, index) => {
