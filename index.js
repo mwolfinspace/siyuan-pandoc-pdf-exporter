@@ -263,9 +263,9 @@ function buildStyle(settings, forExport) {
     .pp-page-body h2 { font-size: calc(var(--pp-content-font-size) * 1.45); }
     .pp-page-body h3 { font-size: calc(var(--pp-content-font-size) * 1.25); }
     .pp-page-body h4 { font-size: calc(var(--pp-content-font-size) * 1.12); }
-    .pp-page-body strong, .pp-page-body b { font-weight: 700; }
-    .pp-page-body em, .pp-page-body i { font-style: italic; }
-    .pp-page-body u { text-decoration: underline; }
+    .pp-page-body strong, .pp-page-body b { font-weight: 700 !important; }
+    .pp-page-body em, .pp-page-body i { font-style: italic !important; }
+    .pp-page-body u { text-decoration: underline !important; }
     .pp-page-body p {
       margin-top: 0;
       margin-bottom: var(--pp-paragraph-spacing);
