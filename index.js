@@ -298,6 +298,7 @@ function buildStyle(settings, forExport) {
       color: #69707a;
       line-height: 1.25;
       pointer-events: none;
+      ${forExport ? "z-index: 10;" : ""}
     }
     .pp-page-mark[data-vpos="top"] { top: 0.52cm; }
     .pp-page-mark[data-vpos="bottom"] { bottom: 0.52cm; }
