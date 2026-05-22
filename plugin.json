@@ -2,7 +2,7 @@
   "name": "siyuan-pandoc-pdf-exporter",
   "author": "Xedryk",
   "url": "https://github.com/mwolfinspace/siyuan-pandoc-pdf-exporter",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "minAppVersion": "2.9.0",
   "backends": ["all"],
   "frontends": ["desktop", "browser-desktop"],
