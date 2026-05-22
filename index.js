@@ -488,7 +488,7 @@ class PreviewController {
       <main class="pp-preview-area">
         <div class="pp-preview-toolbar">
           <div>
-            <div class="pp-kicker">Print preview</div>
+            <div class="pp-kicker">Print via browser</div>
             <div class="pp-title">${escapeHtml(this.documentData.title)}</div>
           </div>
           <div class="pp-page-count"><span data-role="page-count">1</span> pages</div>
@@ -569,7 +569,7 @@ class PreviewController {
       </section>
       <div class="pp-button-row">
         <button class="pp-export-button" data-action="export">Export</button>
-        <button class="pp-export-button pp-print-button" data-action="print">Print Preview as PDF</button>
+        <button class="pp-export-button pp-print-button" data-action="print">Print via Browser</button>
       </div>
     `;
   }

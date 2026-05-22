@@ -16,7 +16,7 @@ Office-style print preview and PDF export for the current SiYuan page.
 - **Image width** — slider from 20% to 100%; below 100% images float right with text wrapping
 - **Two export methods**:
   - **Export** — generates PDF via WeasyPrint (direct, no HTML transformation, preserves CSS)
-  - **Print Preview as PDF** — opens in your default browser, press Ctrl+P → Save as PDF (pixel-perfect, uses Chromium renderer)
+  - **Print via Browser** — opens in your default browser, press Ctrl+P → Save as PDF (pixel-perfect, uses Chromium renderer)
 
 ## Installation
 
@@ -39,7 +39,7 @@ https://github.com/tschoonj/GTK-for-Windows-Runtime-Environment-Installer/releas
 2. Click the printer icon in the top bar.
 3. The preview dialog opens with your document rendered in print layout.
 4. Adjust settings in the right sidebar (page size, margins, font, etc.). The preview updates automatically.
-5. Click **Export** to generate a PDF via WeasyPrint, or **Print Preview as PDF** to open in your browser for native print-to-PDF.
+5. Click **Export** to generate a PDF via WeasyPrint, or **Print via Browser** to open in your browser for native print-to-PDF.
 
 ## Settings Reference
 
@@ -137,7 +137,7 @@ Requires:
 - `pip install weasyprint`
 - Windows: GTK3 runtime (see Installation above)
 
-### Print Preview as PDF
+### Print via Browser
 
 Opens the export HTML in your default web browser. Press **Ctrl+P** (or Cmd+P on Mac) and select **Save as PDF** as the destination printer.
 
@@ -152,7 +152,7 @@ No additional software required.
 | **Export fails: "cannot load library libgobject-2.0-0"** | Install GTK3 runtime on Windows (see Installation) |
 | **WeasyPrint not found** | Run `pip install weasyprint` and ensure Python Scripts folder is in your system PATH |
 | **Images missing in PDF** | Asset paths are resolved automatically. If images still don't appear, check that files exist in `{workspace}/data/assets/` |
-| **Preview doesn't match export** | Use the **Print Preview as PDF** button (browser-native rendering is identical to preview) |
+| **Preview doesn't match export** | Use the **Print via Browser** button (browser-native rendering is identical to preview) |
 | **Header/footer not showing** | Enable "Header text" or "Footer text" toggle in settings; ensure at least one text field is non-empty |
 | **Plugin doesn't appear** | Restart SiYuan after installing the plugin |
 | **Chinese characters garbled** | Select a Chinese font (e.g., Microsoft YaHei, Noto Sans SC) in the Font style setting |
