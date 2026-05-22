@@ -129,6 +129,7 @@ function buildMarginBoxCss(settings) {
     const field = settings[`${prefix}${slot}`] || "";
     if (!field.trim()) continue;
     let t = field
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
       .replace(/\$date\$/gi, tokens.date)
       .replace(/\$time\$/gi, tokens.hour)
       .replace(/\$hour\$/gi, tokens.hour)
