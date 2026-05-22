@@ -258,7 +258,7 @@ function buildStyle(settings, forExport) {
       line-height: 1.2;
       font-weight: 650;
     }
-    .pp-page-body :where(h1, h2, h3, h4, h5, h6) { line-height: 1.25; page-break-after: avoid; text-align: left; }
+    .pp-page-body :where(h1, h2, h3, h4, h5, h6):not(.pp-document-title) { line-height: 1.25; page-break-after: avoid; text-align: left; }
     .pp-page-body h1 { font-size: calc(var(--pp-content-font-size) * 1.75); }
     .pp-page-body h2 { font-size: calc(var(--pp-content-font-size) * 1.45); }
     .pp-page-body h3 { font-size: calc(var(--pp-content-font-size) * 1.25); }
