@@ -111,6 +111,63 @@ function expandTokens(template, context) {
     .replace(/%title/g, context.title || "");
 }
 
+function buildMarginBoxCss(settings) {
+  const tokens = nowTokens();
+  const lines = [];
+  const marginSlots = [
+    { kind: "header", vpos: "top", slot: "Left" },
+    { kind: "header", vpos: "top", slot: "Center" },
+    { kind: "header", vpos: "top", slot: "Right" },
+    { kind: "footer", vpos: "bottom", slot: "Left" },
+    { kind: "footer", vpos: "bottom", slot: "Center" },
+    { kind: "footer", vpos: "bottom", slot: "Right" },
+  ];
+  for (const { kind, vpos, slot } of marginSlots) {
+    const enabled = kind === "header" ? settings.headerEnabled : settings.footerEnabled;
+    if (!enabled) continue;
+    const prefix = kind === "header" ? "header" : "footer";
+    const field = settings[`${prefix}${slot}`] || "";
+    if (!field.trim()) continue;
+    let t = field
+      .replace(/\$date\$/gi, tokens.date)
+      .replace(/\$time\$/gi, tokens.hour)
+      .replace(/\$hour\$/gi, tokens.hour)
+      .replace(/\$title\$/gi, settings.title || "")
+      .replace(/%date/gi, tokens.date)
+      .replace(/%hour/gi, tokens.hour)
+      .replace(/%time/gi, tokens.hour)
+      .replace(/%title/gi, settings.title || "");
+    if (!settings.pageNumber) {
+      t = t.replace(/\$pages\$|\$page\$|%pages|%page|\{NUMPAGES\}|\{PAGE\}/gi, "");
+    }
+    let cssContent = "";
+    let remaining = t;
+    while (remaining.length > 0) {
+      const pageMatch = remaining.match(/^(\$pages\$|\$page\$|%pages|%page|\{NUMPAGES\}|\{PAGE\})\s*/i);
+      if (pageMatch) {
+        const m = pageMatch[1].replace(/\s/g, "");
+        if (/^\$pages\$$|^%pages$|^\{NUMPAGES\}$/i.test(m)) cssContent += " counter(pages) ";
+        else cssContent += " counter(page) ";
+        remaining = remaining.slice(pageMatch[0].length);
+      } else {
+        const nextToken = remaining.search(/\$pages\$|\$page\$|%pages|%page|\{NUMPAGES\}|\{PAGE\}/i);
+        const segment = nextToken === -1 ? remaining : remaining.slice(0, nextToken);
+        remaining = nextToken === -1 ? "" : remaining.slice(nextToken);
+        cssContent += `"${segment.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}" `;
+      }
+    }
+    const align = slot === "Left" ? "left" : slot === "Right" ? "right" : "center";
+    lines.push(`      @${vpos}-${slot.toLowerCase()} {
+        content: ${cssContent.trim()};
+        font-size: 9pt;
+        color: #69707a;
+        font-family: sans-serif;
+        text-align: ${align};
+      }`);
+  }
+  return lines.join("\n");
+}
+
 function getActiveDocument() {
   const candidates = Array.from(document.querySelectorAll(".protyle-wysiwyg"));
   const visible = candidates.find((node) => {
@@ -186,7 +243,7 @@ function normalizeSettings(raw) {
   return settings;
 }
 
-function buildStyle(settings, forExport) {
+function buildStyle(settings, forExport, marginBoxCss) {
   const paper = getPaper(settings);
   const fontFamily = settings.fontFamily ? `"${settings.fontFamily.replace(/"/g, '\\"')}", sans-serif` : (forExport ? "sans-serif" : "var(--b3-font-family-protyle, var(--b3-font-family), sans-serif)");
   const contentFontSize = Number(settings.contentFontSize) || DEFAULT_SETTINGS.contentFontSize;
@@ -211,10 +268,14 @@ function buildStyle(settings, forExport) {
       --pp-text-align: ${settings.textAlign === "justify" ? "justify" : "left"};
       --pp-title-align: ${settings.titleAlign || "center"};
     }
-    ${forExport ? `@page {
+    ${forExport ? (marginBoxCss ? `@page {
+      size: ${paper.widthMm}mm ${paper.heightMm}mm;
+      margin: ${settings.marginTop}cm ${settings.marginRight}cm ${settings.marginBottom}cm ${settings.marginLeft}cm;
+${marginBoxCss}
+    }` : `@page {
       size: ${paper.widthMm}mm ${paper.heightMm}mm;
       margin: 0;
-    }` : `@page {
+    }`) : `@page {
       size: ${paper.widthMm}mm ${paper.heightMm}mm;
       margin: ${settings.marginTop}cm ${settings.marginRight}cm ${settings.marginBottom}cm ${settings.marginLeft}cm;
     }`}
@@ -344,31 +405,33 @@ function stripSiYuanStyles(html) {
   });
 }
 
-function buildExportHtml(documentData, settings, pageCount, pageHtmls) {
+function buildExportHtml(documentData, settings, pageCount, pageHtmls, forPdfEngine) {
   const cleaned = stripSiYuanStyles(cleanPreviewHtml(documentData.html));
   const totalPages = pageCount || (pageHtmls ? pageHtmls.length : 1);
   const pageContents = (pageHtmls && pageHtmls.length ? pageHtmls.map(stripSiYuanStyles) : [
     `${settings.includeTitle ? `<h1 class="pp-document-title">${escapeHtml(documentData.title)}</h1>` : ""}${cleaned}`,
   ]);
-  const body = pageContents.map((html, index) => {
-    const pageNum = index + 1;
-    const ctx = { title: documentData.title, page: pageNum, pages: totalPages };
-    const header = buildPageMarkHtml(settings, "header", ctx);
-    const footer = buildPageMarkHtml(settings, "footer", ctx);
-    return `
+  const mbox = forPdfEngine ? buildMarginBoxCss(Object.assign({}, settings, { title: documentData.title })) : "";
+  const marginBoxCss = mbox.trim() || null;
+  const body = marginBoxCss
+    ? `<div class="pp-page-body">${pageContents.join("")}</div>`
+    : pageContents.map((html, index) => {
+      const pageNum = index + 1;
+      const ctx = { title: documentData.title, page: pageNum, pages: totalPages };
+      return `
     <section class="pp-export-page">
-      ${header}
+      ${buildPageMarkHtml(settings, "header", ctx)}
       <div class="pp-page-body">${html}</div>
-      ${footer}
+      ${buildPageMarkHtml(settings, "footer", ctx)}
     </section>`;
-  }).join("");
+    }).join("");
 
   return `<!doctype html>
 <html>
 <head>
   <meta charset="utf-8">
   <title>${escapeHtml(documentData.title)}</title>
-  <style>${buildStyle(settings, true)}</style>
+  <style>${buildStyle(settings, true, marginBoxCss || undefined)}</style>
 </head>
 <body>
   ${body}
@@ -695,7 +758,7 @@ class PreviewController {
     button.textContent = "Exporting...";
     try {
       await this.plugin.saveSettings(this.settings);
-      let html = buildExportHtml(this.documentData, this.settings, this.pageCount, this.getPreviewPageHtml());
+      let html = buildExportHtml(this.documentData, this.settings, this.pageCount, this.getPreviewPageHtml(), true);
       const ws = window.siyuan && window.siyuan.config && window.siyuan.config.system && window.siyuan.config.system.workspaceDir;
       if (!ws) throw new Error("Cannot resolve workspace directory");
       const base = ws.replace(/\\/g, "/").replace(/\/+$/, "") + "/data";
