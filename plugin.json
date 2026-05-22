@@ -1,7 +1,7 @@
 {
   "name": "siyuan-pandoc-pdf-exporter",
   "author": "Xedryk",
-  "url": "https://github.com/Xedryk/siyuan-pandoc-pdf-exporter",
+  "url": "https://github.com/mwolfinspace/siyuan-pandoc-pdf-exporter",
   "version": "0.1.0",
   "minAppVersion": "2.9.0",
   "backends": ["all"],
