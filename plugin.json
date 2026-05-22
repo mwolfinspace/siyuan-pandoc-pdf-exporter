@@ -1,0 +1,20 @@
+{
+  "name": "siyuan-pandoc-pdf-exporter",
+  "author": "Xedryk",
+  "url": "https://github.com/Xedryk/siyuan-pandoc-pdf-exporter",
+  "version": "0.1.0",
+  "minAppVersion": "2.9.0",
+  "backends": ["all"],
+  "frontends": ["desktop", "browser-desktop"],
+  "displayName": {
+    "default": "Pandoc PDF Exporter"
+  },
+  "description": {
+    "default": "Office-style print preview and Pandoc based PDF export for the current SiYuan page."
+  },
+  "readme": {
+    "default": "README_EXPORT.md",
+    "en_US": "README_EXPORT.md"
+  },
+  "keywords": ["pdf", "pandoc", "export", "print", "preview"]
+}
