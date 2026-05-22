@@ -622,7 +622,10 @@ class PreviewController {
     const fonts = new Set(["Arial", "Calibri", "Cambria", "Times New Roman", "Microsoft YaHei", "Noto Sans", "Noto Serif"]);
     try {
       const response = await post("/api/system/getSysFonts", {});
-      (response.data || []).forEach((font) => fonts.add(font));
+      (response.data || []).forEach((item) => {
+        if (typeof item === "string") fonts.add(item);
+        else if (item && item.family) fonts.add(item.family);
+      });
     } catch (err) {
       console.warn(`[${PLUGIN_NAME}] getSysFonts failed`, err);
     }
