@@ -244,9 +244,9 @@ function normalizeSettings(raw) {
   return settings;
 }
 
-function buildStyle(settings, forExport, marginBoxCss) {
+function buildStyle(settings, forExport, marginBoxCss, fontFallback) {
   const paper = getPaper(settings);
-  const fontFamily = settings.fontFamily ? `"${settings.fontFamily.replace(/"/g, '\\"')}", sans-serif` : (forExport ? "sans-serif" : "var(--b3-font-family-protyle, var(--b3-font-family), sans-serif)");
+  const fontFamily = settings.fontFamily ? `"${settings.fontFamily.replace(/"/g, '\\"')}", sans-serif` : (forExport ? ((fontFallback || "sans-serif").replace(/"/g, "'")) : "var(--b3-font-family-protyle, var(--b3-font-family), sans-serif)");
   const contentFontSize = Number(settings.contentFontSize) || DEFAULT_SETTINGS.contentFontSize;
   const titleFontSize = Number(settings.titleFontSize) || DEFAULT_SETTINGS.titleFontSize;
   const imageWidth = Math.max(10, Math.min(100, Number(settings.imageWidth) || 100));
@@ -406,7 +406,7 @@ function stripSiYuanStyles(html) {
   });
 }
 
-function buildExportHtml(documentData, settings, pageCount, pageHtmls, forPdfEngine) {
+function buildExportHtml(documentData, settings, pageCount, pageHtmls, forPdfEngine, fontFallback) {
   const cleaned = stripSiYuanStyles(cleanPreviewHtml(documentData.html));
   const totalPages = pageCount || (pageHtmls ? pageHtmls.length : 1);
   const pageContents = (pageHtmls && pageHtmls.length ? pageHtmls.map(stripSiYuanStyles) : [
@@ -432,7 +432,7 @@ function buildExportHtml(documentData, settings, pageCount, pageHtmls, forPdfEng
 <head>
   <meta charset="utf-8">
   <title>${escapeHtml(documentData.title)}</title>
-  <style>${buildStyle(settings, true, marginBoxCss || undefined)}</style>
+  <style>${buildStyle(settings, true, marginBoxCss || undefined, fontFallback)}</style>
 </head>
 <body>
   ${body}
@@ -732,7 +732,8 @@ class PreviewController {
     button.textContent = "Opening in browser...";
     try {
       await this.plugin.saveSettings(this.settings);
-      let html = buildExportHtml(this.documentData, this.settings, this.pageCount, this.getPreviewPageHtml());
+      const siYuanFont = getComputedStyle(document.body).fontFamily + ", sans-serif";
+      let html = buildExportHtml(this.documentData, this.settings, this.pageCount, this.getPreviewPageHtml(), false, siYuanFont);
       const ws = window.siyuan && window.siyuan.config && window.siyuan.config.system && window.siyuan.config.system.workspaceDir;
       if (!ws) throw new Error("Cannot resolve workspace directory");
       const base = ws.replace(/\\/g, "/").replace(/\/+$/, "") + "/data";
@@ -762,7 +763,8 @@ class PreviewController {
     button.textContent = "Exporting...";
     try {
       await this.plugin.saveSettings(this.settings);
-      let html = buildExportHtml(this.documentData, this.settings, this.pageCount, this.getPreviewPageHtml(), true);
+      const siYuanFont = getComputedStyle(document.body).fontFamily + ", sans-serif";
+      let html = buildExportHtml(this.documentData, this.settings, this.pageCount, this.getPreviewPageHtml(), true, siYuanFont);
       const ws = window.siyuan && window.siyuan.config && window.siyuan.config.system && window.siyuan.config.system.workspaceDir;
       if (!ws) throw new Error("Cannot resolve workspace directory");
       const base = ws.replace(/\\/g, "/").replace(/\/+$/, "") + "/data";
