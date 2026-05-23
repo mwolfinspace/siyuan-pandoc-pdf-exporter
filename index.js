@@ -277,6 +277,55 @@ function cleanupImageRows(root) {
   });
 }
 
+function collectCssVars() {
+  const vars = [];
+  const rootStyles = getComputedStyle(document.documentElement);
+  for (let i = 0; i < rootStyles.length; i++) {
+    const prop = rootStyles[i];
+    if (prop.startsWith("--")) {
+      const val = rootStyles.getPropertyValue(prop);
+      if (val) vars.push(`  ${prop}: ${val};`);
+    }
+  }
+  return vars.length ? `:root {\n${vars.join("\n")}\n}` : "";
+}
+
+function collectLinkTags() {
+  const tags = [];
+  document.querySelectorAll("head link[rel=stylesheet]").forEach((el) => {
+    const href = el.getAttribute("href");
+    if (href) {
+      try { tags.push(`<link rel="stylesheet" href="${new URL(href, window.location.href).href}">`); }
+      catch (e) { tags.push(`<link rel="stylesheet" href="${href}">`); }
+    }
+  });
+  return tags;
+}
+
+function collectAllCss() {
+  const parts = [];
+  const seen = new Set();
+  Array.from(document.styleSheets).forEach((sheet) => {
+    try {
+      Array.from(sheet.cssRules || []).forEach((rule) => {
+        const text = rule.cssText;
+        if (!text || seen.has(text)) return;
+        if (/^@page\b/i.test(text.trim())) return;
+        if (/^@media\b[\s\S]*?\bprint\b/i.test(text.trim())) return;
+        seen.add(text);
+        parts.push(text);
+      });
+    } catch (e) { /* cross-origin or restricted — skip */ }
+  });
+  document.querySelectorAll("head style").forEach((el) => {
+    let text = el.textContent;
+    if (!text || seen.has(text)) return;
+    text = text.replace(/@page[^{]*\{[^}]*\}/gi, "").trim();
+    if (text) { seen.add(text); parts.push(text); }
+  });
+  return parts.join("\n");
+}
+
 function normalizeSettings(raw) {
   const settings = Object.assign({}, DEFAULT_SETTINGS, raw || {});
   if (raw && raw.fontSize && !raw.contentFontSize) {
@@ -454,12 +503,10 @@ function resolveImagePaths(html, dataDir) {
 }
 
 function stripSiYuanStyles(html) {
+  // With collectCss() injecting --b3-* variables, keep all var() references.
+  // Only remove empty/whitespace declarations.
   return html.replace(/\sstyle\s*=\s*"([^"]*)"/gi, (match, value) => {
-    const cleaned = value.split(";").map((decl) => {
-      const trimmed = decl.trim();
-      if (!trimmed || /var\(\s*--b3-/i.test(trimmed)) return "";
-      return decl;
-    }).join(";").replace(/;\s*;/g, ";").replace(/;\s*$/, "").trim();
+    const cleaned = value.split(";").filter((decl) => decl.trim()).join(";").trim();
     return cleaned ? ` style="${cleaned}"` : "";
   });
 }
@@ -471,7 +518,14 @@ function buildExportHtml(documentData, settings, pageCount, pageHtmls, forPdfEng
     `${settings.includeTitle ? `<h1 class="pp-document-title">${escapeHtml(documentData.title)}</h1>` : ""}${cleaned}`,
   ]);
 
+  // Collect <link> stylesheets from the document head (e.g. KaTeX CSS).
+  // Resolve to absolute URLs so they work when the exported HTML is opened standalone.
+  const linkTags = collectLinkTags();
+
   if (forPdfEngine) {
+    // WeasyPrint path — full CSS is safe (W3C-compliant engine handles it correctly)
+    const themeCss = collectCssVars() + "\n" + collectAllCss();
+
     // WeasyPrint path: @page margin boxes for headers/footers
     const mbox = buildMarginBoxCss(Object.assign({}, settings, { title: documentData.title }));
     const marginBoxCss = mbox.trim() || null;
@@ -493,7 +547,8 @@ function buildExportHtml(documentData, settings, pageCount, pageHtmls, forPdfEng
 <head>
   <meta charset="utf-8">
   <title>${escapeHtml(documentData.title)}</title>
-  <style>${buildStyle(settings, true, marginBoxCss || undefined, fontFallback)}</style>
+  ${linkTags.join("\n  ")}
+  <style>${themeCss}\n${buildStyle(settings, true, marginBoxCss || undefined, fontFallback)}</style>
 </head>
 <body>
   ${body}
@@ -501,14 +556,23 @@ function buildExportHtml(documentData, settings, pageCount, pageHtmls, forPdfEng
 </html>`;
   }
 
+  // Browser print path — Chrome's print engine chokes on editor/theme layout CSS.
+  // Only inject CSS variables (theme colors) and KaTeX <link> tags.
+  // Style rules from SiYuan's editor are NOT included to avoid breaking page flow.
+  const cssVars = collectCssVars();
+
   // Browser print path: per-page sections (matches preview layout exactly)
   // Reduce top padding 0.3cm to compensate for browser print dialog extra top margin;
   // reduce bottom padding 0.5mm to give content breathing room vs screen rendering.
   const browserCss = `
+    html, body { overflow: visible !important; min-height: 0 !important; }
     .pp-export-page {
+      break-after: page !important;
+      overflow: visible !important;
       padding-top: max(0cm, calc(var(--pp-margin-top) - 0.3cm)) !important;
       padding-bottom: max(0.2cm, calc(var(--pp-margin-bottom) - 0.5mm)) !important;
     }
+    .pp-page-body { overflow: visible !important; }
   `;
 
   return `<!doctype html>
@@ -516,7 +580,8 @@ function buildExportHtml(documentData, settings, pageCount, pageHtmls, forPdfEng
 <head>
   <meta charset="utf-8">
   <title>${escapeHtml(documentData.title)}</title>
-  <style>${buildStyle(settings, true, null, fontFallback)}${browserCss}</style>
+  ${linkTags.join("\n  ")}
+  <style>${cssVars}\n${buildStyle(settings, true, null, fontFallback)}${browserCss}</style>
 </head>
 <body>
   ${pageContents.map((html, index) => {
@@ -918,6 +983,7 @@ class PreviewController {
       button.textContent = original;
     }
   }
+
 }
 
 module.exports = class PandocPdfExporterPlugin extends Plugin {
