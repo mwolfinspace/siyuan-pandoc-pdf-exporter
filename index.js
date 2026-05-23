@@ -412,22 +412,25 @@ function buildExportHtml(documentData, settings, pageCount, pageHtmls, forPdfEng
   const pageContents = (pageHtmls && pageHtmls.length ? pageHtmls.map(stripSiYuanStyles) : [
     `${settings.includeTitle ? `<h1 class="pp-document-title">${escapeHtml(documentData.title)}</h1>` : ""}${cleaned}`,
   ]);
-  const mbox = forPdfEngine ? buildMarginBoxCss(Object.assign({}, settings, { title: documentData.title })) : "";
-  const marginBoxCss = mbox.trim() || null;
-  const body = marginBoxCss
-    ? `<div class="pp-page-body">${pageContents.join("")}</div>`
-    : pageContents.map((html, index) => {
-      const pageNum = index + 1;
-      const ctx = { title: documentData.title, page: pageNum, pages: totalPages };
-      return `
+
+  if (forPdfEngine) {
+    // WeasyPrint path: @page margin boxes for headers/footers
+    const mbox = buildMarginBoxCss(Object.assign({}, settings, { title: documentData.title }));
+    const marginBoxCss = mbox.trim() || null;
+    const body = marginBoxCss
+      ? `<div class="pp-page-body">${pageContents.join("")}</div>`
+      : pageContents.map((html, index) => {
+        const pageNum = index + 1;
+        const ctx = { title: documentData.title, page: pageNum, pages: totalPages };
+        return `
     <section class="pp-export-page">
       ${buildPageMarkHtml(settings, "header", ctx)}
       <div class="pp-page-body">${html}</div>
       ${buildPageMarkHtml(settings, "footer", ctx)}
     </section>`;
-    }).join("");
+      }).join("");
 
-  return `<!doctype html>
+    return `<!doctype html>
 <html>
 <head>
   <meta charset="utf-8">
@@ -436,6 +439,32 @@ function buildExportHtml(documentData, settings, pageCount, pageHtmls, forPdfEng
 </head>
 <body>
   ${body}
+</body>
+</html>`;
+  }
+
+  // Browser print path: @page margins, position:fixed headers, single flow
+  const pageToken = `<span class="pp-cnt-page"></span>`;
+  const ctx = { title: documentData.title, page: pageToken, pages: totalPages };
+  const headerHtml = buildPageMarkHtml(settings, "header", ctx);
+  const footerHtml = buildPageMarkHtml(settings, "footer", ctx);
+  const marks = (headerHtml || footerHtml)
+    ? `<div class="pp-print-marks">${headerHtml}${footerHtml}</div>` : "";
+  const browserCss = `
+    .pp-page-mark { position: fixed !important; }
+    .pp-cnt-page::after { content: counter(page); }
+  `;
+
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${escapeHtml(documentData.title)}</title>
+  <style>${buildStyle(settings, true, " ", fontFallback)}${browserCss}</style>
+</head>
+<body>
+  ${marks}
+  <div class="pp-page-body">${pageContents.join("")}</div>
 </body>
 </html>`;
 }
