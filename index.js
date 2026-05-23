@@ -208,13 +208,23 @@ function cleanPreviewHtml(html) {
     });
   });
   cleanupImageRows(wrapper);
-  wrapper.querySelectorAll('span[data-type="a"][data-href]').forEach((node) => {
+  // Convert SiYuan link nodes to real <a> tags
+  wrapper.querySelectorAll('[data-href]').forEach((node) => {
+    const href = node.getAttribute("data-href") || "";
+    if (!href) return;
     const a = document.createElement("a");
-    a.href = node.getAttribute("data-href") || "";
+    a.href = href;
     a.target = "_blank";
     a.rel = "noopener noreferrer";
     while (node.firstChild) a.appendChild(node.firstChild);
     node.replaceWith(a);
+  });
+  // Remove any leftover data-type="a" wrappers without href
+  wrapper.querySelectorAll('[data-type="a"]').forEach((node) => {
+    if (node.nodeName !== "A" && node.parentNode) {
+      while (node.firstChild) node.parentNode.insertBefore(node.firstChild, node);
+      node.remove();
+    }
   });
   return wrapper.innerHTML;
 }
