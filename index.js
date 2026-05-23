@@ -444,10 +444,13 @@ function buildExportHtml(documentData, settings, pageCount, pageHtmls, forPdfEng
   }
 
   // Browser print path: per-page sections (matches preview layout exactly)
-  // with a tiny content buffer to absorb print-vs-screen rendering differences
-  const buf = "max(0.2cm, calc(var(--pp-margin-bottom) - 0.5mm))";
+  // Reduce top padding 0.3cm to compensate for browser print dialog extra top margin;
+  // reduce bottom padding 0.5mm to give content breathing room vs screen rendering.
   const browserCss = `
-    .pp-export-page { padding-bottom: ${buf} !important; }
+    .pp-export-page {
+      padding-top: max(0cm, calc(var(--pp-margin-top) - 0.3cm)) !important;
+      padding-bottom: max(0.2cm, calc(var(--pp-margin-bottom) - 0.5mm)) !important;
+    }
   `;
 
   return `<!doctype html>
