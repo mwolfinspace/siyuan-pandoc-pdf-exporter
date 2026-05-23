@@ -443,7 +443,7 @@ function buildExportHtml(documentData, settings, pageCount, pageHtmls, forPdfEng
 </html>`;
   }
 
-  // Browser print path: @page{margin:0} + body padding (reliable in all browsers)
+  // Browser print path: @page margins + position:fixed headers in margin area
   const pageToken = `<span class="pp-cnt-page"></span>`;
   const ctx = { title: documentData.title, page: pageToken, pages: totalPages };
   const headerHtml = buildPageMarkHtml(settings, "header", ctx);
@@ -451,9 +451,6 @@ function buildExportHtml(documentData, settings, pageCount, pageHtmls, forPdfEng
   const marks = (headerHtml || footerHtml)
     ? `<div class="pp-print-marks">${headerHtml}${footerHtml}</div>` : "";
   const browserCss = `
-    body {
-      padding: ${settings.marginTop}cm ${settings.marginRight}cm ${settings.marginBottom}cm ${settings.marginLeft}cm;
-    }
     .pp-page-mark { position: fixed !important; }
     .pp-cnt-page::after { content: counter(page); }
   `;
@@ -463,7 +460,7 @@ function buildExportHtml(documentData, settings, pageCount, pageHtmls, forPdfEng
 <head>
   <meta charset="utf-8">
   <title>${escapeHtml(documentData.title)}</title>
-  <style>${buildStyle(settings, true, null, fontFallback)}${browserCss}</style>
+  <style>${buildStyle(settings, true, " ", fontFallback)}${browserCss}</style>
 </head>
 <body>
   ${marks}
