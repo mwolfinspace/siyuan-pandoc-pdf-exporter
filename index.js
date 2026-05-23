@@ -208,6 +208,36 @@ function cleanPreviewHtml(html) {
     });
   });
   cleanupImageRows(wrapper);
+  // Strip SiYuan image UI wrappers, leaving only the <img>
+  wrapper.querySelectorAll('.protyle-action, .protyle-action__drag, .protyle-action__title').forEach((el) => el.remove());
+  wrapper.querySelectorAll('span[data-type="img"]').forEach((span) => {
+    const img = span.querySelector("img");
+    if (img) {
+      img.removeAttribute("data-src");
+      span.replaceWith(img);
+    } else {
+      span.remove();
+    }
+  });
+  // Strip float/margin/width inline styles from images inside table cells
+  wrapper.querySelectorAll("th img, td img").forEach((img) => {
+    img.style.float = "";
+    img.style.margin = "";
+    img.style.width = "";
+    img.style.maxWidth = "";
+    img.closest("th, td")?.classList.add("pp-img-cell");
+  });
+  // Flatten tables: remove filler rows (fn__none), rowspan/colspan, and outer UI wrappers
+  wrapper.querySelectorAll('[data-type="NodeTable"]').forEach((node) => {
+    const table = node.querySelector(":scope > div > table, table");
+    if (!table) return;
+    table.querySelectorAll("thead tr, tbody tr").forEach((tr) => {
+      if (tr.querySelector(".fn__none")) { tr.remove(); }
+    });
+    table.querySelectorAll("[rowspan]").forEach((el) => el.removeAttribute("rowspan"));
+    table.querySelectorAll("[colspan]").forEach((el) => el.removeAttribute("colspan"));
+    node.replaceWith(table);
+  });
   // Convert SiYuan link nodes to real <a> tags
   wrapper.querySelectorAll('[data-href]').forEach((node) => {
     const href = node.getAttribute("data-href") || "";
@@ -366,6 +396,14 @@ ${marginBoxCss}
       object-fit: contain;
       page-break-inside: avoid;
     }
+    .pp-page-body :where(th, td) img {
+      display: block !important;
+      width: 100% !important;
+      max-width: 100% !important;
+      height: auto !important;
+      float: none !important;
+      margin: 0 auto !important;
+    }
     .pp-image-row {
       display: contents;
       margin: 0;
@@ -373,8 +411,9 @@ ${marginBoxCss}
       min-height: 0;
     }
     .pp-page-body figure { margin: 0.35cm 0; }
-    .pp-page-body table { width: 100%; border-collapse: collapse; page-break-inside: auto; }
+    .pp-page-body table { width: 100%; table-layout: fixed; border-collapse: collapse; page-break-inside: auto; }
     .pp-page-body :where(th, td) { border: 1px solid #d0d7de; padding: 0.12cm 0.18cm; vertical-align: top; }
+    .pp-page-body .pp-img-cell { padding: 0.02cm 0.18cm; }
     .pp-page-body :where(pre, code) { font-family: ${forExport ? "Consolas, \"Courier New\", monospace" : "var(--b3-font-family-code, Consolas, monospace)"}; }
     .pp-page-body pre { white-space: pre-wrap; background: #f6f8fa; padding: 0.25cm; border-radius: 4px; }
     .pp-page-body blockquote { margin-left: 0; padding-left: 0.35cm; border-left: 3px solid #c8ccd0; color: #4c5560; }
