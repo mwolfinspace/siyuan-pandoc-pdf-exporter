@@ -443,16 +443,11 @@ function buildExportHtml(documentData, settings, pageCount, pageHtmls, forPdfEng
 </html>`;
   }
 
-  // Browser print path: @page margins + position:fixed headers in margin area
-  const pageToken = `<span class="pp-cnt-page"></span>`;
-  const ctx = { title: documentData.title, page: pageToken, pages: totalPages };
-  const headerHtml = buildPageMarkHtml(settings, "header", ctx);
-  const footerHtml = buildPageMarkHtml(settings, "footer", ctx);
-  const marks = (headerHtml || footerHtml)
-    ? `<div class="pp-print-marks">${headerHtml}${footerHtml}</div>` : "";
+  // Browser print path: per-page sections (matches preview layout exactly)
+  // with a tiny content buffer to absorb print-vs-screen rendering differences
+  const buf = "max(0.2cm, calc(var(--pp-margin-bottom) - 0.5mm))";
   const browserCss = `
-    .pp-page-mark { position: fixed !important; }
-    .pp-cnt-page::after { content: counter(page); }
+    .pp-export-page { padding-bottom: ${buf} !important; }
   `;
 
   return `<!doctype html>
@@ -460,11 +455,19 @@ function buildExportHtml(documentData, settings, pageCount, pageHtmls, forPdfEng
 <head>
   <meta charset="utf-8">
   <title>${escapeHtml(documentData.title)}</title>
-  <style>${buildStyle(settings, true, " ", fontFallback)}${browserCss}</style>
+  <style>${buildStyle(settings, true, null, fontFallback)}${browserCss}</style>
 </head>
 <body>
-  ${marks}
-  <div class="pp-page-body">${pageContents.join("")}</div>
+  ${pageContents.map((html, index) => {
+    const pageNum = index + 1;
+    const ctx = { title: documentData.title, page: pageNum, pages: totalPages };
+    return `
+  <section class="pp-export-page">
+    ${buildPageMarkHtml(settings, "header", ctx)}
+    <div class="pp-page-body">${html}</div>
+    ${buildPageMarkHtml(settings, "footer", ctx)}
+  </section>`;
+  }).join("")}
 </body>
 </html>`;
 }
