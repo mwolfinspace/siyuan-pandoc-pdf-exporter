@@ -208,6 +208,14 @@ function cleanPreviewHtml(html) {
     });
   });
   cleanupImageRows(wrapper);
+  wrapper.querySelectorAll('span[data-type="a"][data-href]').forEach((node) => {
+    const a = document.createElement("a");
+    a.href = node.getAttribute("data-href") || "";
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    while (node.firstChild) a.appendChild(node.firstChild);
+    node.replaceWith(a);
+  });
   return wrapper.innerHTML;
 }
 
@@ -305,6 +313,7 @@ ${marginBoxCss}
       line-height: 1.55;
       text-align: var(--pp-text-align);
     }
+    .pp-page-body a { color: #175199; text-decoration: underline; word-break: break-all; }
     .pp-page-body :where(p, div, span, li, td, th, blockquote) {
       font-size: inherit !important;
       font-family: inherit !important;
