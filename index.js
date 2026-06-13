@@ -37,6 +37,7 @@ const DEFAULT_SETTINGS = {
   titleAlign: "center",
   textAlign: "left",
   imageWidth: 65,
+  separateImageSizes: false,
 };
 
 function post(endpoint, payload) {
@@ -198,7 +199,7 @@ function getActiveDocument() {
   };
 }
 
-function cleanPreviewHtml(html) {
+function cleanPreviewHtml(html, annotateImages) {
   const wrapper = document.createElement("div");
   wrapper.innerHTML = html || "";
   wrapper.querySelectorAll("script, style").forEach((node) => node.remove());
@@ -256,24 +257,60 @@ function cleanPreviewHtml(html) {
       node.remove();
     }
   });
+  // Annotate images with indices for per-image size control
+  if (annotateImages) {
+    let idx = 0;
+    let tableIdx = 0;
+    wrapper.querySelectorAll("img").forEach((img) => {
+      if (img.closest("th, td")) {
+        img.dataset.ppImageTableIndex = String(tableIdx++);
+      } else {
+        img.dataset.ppImageIndex = String(idx++);
+      }
+    });
+  }
   return wrapper.innerHTML;
+}
+
+function hasVisibleText(node) {
+  return /[^\s\u00a0\u200b\u200c\u200d\ufeff\u2028\u2029]/.test(node.textContent || "");
 }
 
 function cleanupImageRows(root) {
   root.querySelectorAll("p, div, figure").forEach((node) => {
     if (!node.querySelector("img")) return;
-    const text = (node.textContent || "").replace(/\u00a0/g, " ").trim();
+    if (hasVisibleText(node)) return;
     const mediaChildren = Array.from(node.children).filter((child) => {
       return child.matches("img, picture, span, a") && child.querySelectorAll("img").length > 0 || child.matches("img, picture");
     });
-    if (!text && mediaChildren.length > 0 && node.querySelectorAll("img").length > 0) {
+    if (mediaChildren.length > 0 && node.querySelectorAll("img").length > 0) {
       node.classList.add("pp-image-row");
     }
   });
   root.querySelectorAll("p, div").forEach((node) => {
     if (node.querySelector("img, table, pre, blockquote, ul, ol, h1, h2, h3, h4, h5, h6")) return;
-    const text = (node.textContent || "").replace(/\u00a0/g, " ").trim();
-    if (!text && node.children.length === 0) node.remove();
+    if (hasVisibleText(node)) return;
+    if (node.children.length === 0) node.remove();
+  });
+  // Third pass: unwrap empty placeholder blocks containing only floated images.
+  // SiYuan image blocks (e.g. <div><div>​<img>​</div></div>) leave an empty
+  // wrapper behind when the image is floated; removing the wrapper eliminates
+  // the extra blank line in the PDF.
+  root.querySelectorAll("p, div").forEach((node) => {
+    if (node.closest("th, td")) return;
+    if (!node.querySelector("img")) return;
+    if (hasVisibleText(node)) return;
+    const children = Array.from(node.children);
+    if (children.length === 0) return;
+    const allMedia = children.every((child) =>
+      child.matches("img, picture") ||
+      (child.matches("span, a") && child.querySelector("img"))
+    );
+    if (!allMedia) return;
+    const parent = node.parentNode;
+    if (!parent) return;
+    children.forEach((child) => parent.insertBefore(child, node));
+    parent.removeChild(node);
   });
 }
 
@@ -341,11 +378,22 @@ function normalizeSettings(raw) {
   return settings;
 }
 
-function buildStyle(settings, forExport, marginBoxCss, fontFallback) {
+function buildStyle(settings, forExport, marginBoxCss, fontFallback, imageWidths) {
   const paper = getPaper(settings);
   const fontFamily = settings.fontFamily ? `"${settings.fontFamily.replace(/"/g, '\\"')}", sans-serif` : (forExport ? ((fontFallback || "sans-serif").replace(/"/g, "'")) : "var(--b3-font-family-protyle, var(--b3-font-family), sans-serif)");
   const contentFontSize = Number(settings.contentFontSize) || DEFAULT_SETTINGS.contentFontSize;
   const titleFontSize = Number(settings.titleFontSize) || DEFAULT_SETTINGS.titleFontSize;
+
+  const perImageCss = imageWidths && Object.keys(imageWidths).length > 0
+    ? Object.entries(imageWidths).map(([index, width]) => {
+        const w = Math.max(10, Math.min(100, Number(width) || 100));
+        const rule = w < 100
+          ? `float: right; clear: right; margin: 0 0 0.55cm 0.75cm; width: ${w}%; max-width: ${w}%;`
+          : `display: block; width: 100%; max-width: 100%; margin: 0.35cm auto;`;
+        return `    .pp-page-body img[data-pp-image-index="${index}"] {\n      ${rule}\n      height: auto;\n      object-fit: contain;\n      page-break-inside: avoid;\n    }`;
+      }).join("\n")
+    : null;
+
   const imageWidth = Math.max(10, Math.min(100, Number(settings.imageWidth) || 100));
   const floatRule = imageWidth < 100
     ? `float: right; clear: right; margin: 0 0 0.55cm 0.75cm; width: ${imageWidth}%; max-width: ${imageWidth}%;`
@@ -439,12 +487,12 @@ ${marginBoxCss}
       overflow-wrap: anywhere;
     }
     .pp-page-body :where(li, blockquote) { overflow-wrap: anywhere; }
-    .pp-page-body img {
+    ${perImageCss || `.pp-page-body img {
       ${floatRule}
       height: auto;
       object-fit: contain;
       page-break-inside: avoid;
-    }
+    }`}
     .pp-page-body :where(th, td) img {
       display: block !important;
       width: 100% !important;
@@ -479,6 +527,7 @@ ${marginBoxCss}
       pointer-events: none;
       z-index: 10;
     }
+    .pp-page-mark a { pointer-events: auto; }
     .pp-page-mark[data-vpos="top"] { top: 0.52cm; }
     .pp-page-mark[data-vpos="bottom"] { bottom: 0.52cm; }
     .pp-page-mark__left { text-align: left; }
@@ -511,8 +560,9 @@ function stripSiYuanStyles(html) {
   });
 }
 
-function buildExportHtml(documentData, settings, pageCount, pageHtmls, forPdfEngine, fontFallback) {
-  const cleaned = stripSiYuanStyles(cleanPreviewHtml(documentData.html));
+function buildExportHtml(documentData, settings, pageCount, pageHtmls, forPdfEngine, fontFallback, imageWidths) {
+  const annotate = !!(imageWidths && Object.keys(imageWidths).length > 0);
+  const cleaned = stripSiYuanStyles(cleanPreviewHtml(documentData.html, annotate));
   const totalPages = pageCount || (pageHtmls ? pageHtmls.length : 1);
   const pageContents = (pageHtmls && pageHtmls.length ? pageHtmls.map(stripSiYuanStyles) : [
     `${settings.includeTitle ? `<h1 class="pp-document-title">${escapeHtml(documentData.title)}</h1>` : ""}${cleaned}`,
@@ -548,7 +598,7 @@ function buildExportHtml(documentData, settings, pageCount, pageHtmls, forPdfEng
   <meta charset="utf-8">
   <title>${escapeHtml(documentData.title)}</title>
   ${linkTags.join("\n  ")}
-  <style>${themeCss}\n${buildStyle(settings, true, marginBoxCss || undefined, fontFallback)}</style>
+  <style>${themeCss}\n${buildStyle(settings, true, marginBoxCss || undefined, fontFallback, imageWidths)}</style>
 </head>
 <body>
   ${body}
@@ -581,7 +631,7 @@ function buildExportHtml(documentData, settings, pageCount, pageHtmls, forPdfEng
   <meta charset="utf-8">
   <title>${escapeHtml(documentData.title)}</title>
   ${linkTags.join("\n  ")}
-  <style>${cssVars}\n${buildStyle(settings, true, null, fontFallback)}${browserCss}</style>
+  <style>${cssVars}\n${buildStyle(settings, true, null, fontFallback, imageWidths)}${browserCss}</style>
 </head>
 <body>
   ${pageContents.map((html, index) => {
@@ -635,6 +685,8 @@ class PreviewController {
     this.settings = normalizeSettings(plugin.settingsData || {});
     this.fonts = [];
     this.pageCount = 1;
+    this.imageWidths = {};
+    this.separateCounts = { regular: 0, table: 0 };
     this.render();
     this.loadFonts();
     this.schedulePreview();
@@ -721,15 +773,40 @@ class PreviewController {
         </div></div>
       </section>
       <section class="pp-group"><h3>Images</h3>
+        ${this.toggle("Separate each image sizes", "separateImageSizes")}
+        ${this.settings.separateImageSizes ? this.renderImageSliders() : `
         <label class="pp-field"><span>Image width: <b data-role="image-width-label">${this.settings.imageWidth}%</b></span>
-          <input type="range" min="20" max="100" step="5" data-setting="imageWidth" value="${this.settings.imageWidth}">
-        </label>
+          <input type="range" min="20" max="100" step="1" data-setting="imageWidth" value="${this.settings.imageWidth}">
+        </label>`}
       </section>
       <div class="pp-button-row">
         <button class="pp-export-button" data-action="export">Export</button>
         <button class="pp-export-button pp-print-button" data-action="print">Print via Browser</button>
       </div>
     `;
+  }
+
+  renderImageSliders() {
+    const temp = document.createElement("div");
+    temp.innerHTML = cleanPreviewHtml(this.documentData.html, true);
+    const regular = temp.querySelectorAll("img:not(th img):not(td img)");
+    const table = temp.querySelectorAll("th img, td img");
+    this.separateCounts = { regular: regular.length, table: table.length };
+    // Initialize widths for any newly added images
+    regular.forEach((img, i) => {
+      if (this.imageWidths[i] === undefined) this.imageWidths[i] = this.settings.imageWidth;
+    });
+    let html = "";
+    regular.forEach((img, i) => {
+      const w = this.imageWidths[i];
+      html += `<label class="pp-field"><span>Image #${i + 1}: <b>${w}%</b></span>
+        <input type="range" min="20" max="100" step="1" data-pp-image-width="${i}" value="${w}">
+      </label>`;
+    });
+    table.forEach((img, i) => {
+      html += `<div class="pp-toggle" style="justify-content:flex-start;gap:6px"><span>Image in table #${i + 1}</span></div>`;
+    });
+    return html;
   }
 
   numberInput(label, key, min, max, step) {
@@ -744,6 +821,10 @@ class PreviewController {
     this.root.querySelectorAll("[data-setting]").forEach((input) => {
       input.addEventListener("input", () => this.handleInput(input));
       input.addEventListener("change", () => this.handleInput(input));
+    });
+    this.root.querySelectorAll("[data-pp-image-width]").forEach((input) => {
+      input.addEventListener("input", () => this.handleImageWidthInput(input));
+      input.addEventListener("change", () => this.handleImageWidthInput(input));
     });
     this.root.querySelectorAll("[data-setting-button]").forEach((button) => {
       button.addEventListener("click", () => {
@@ -761,6 +842,16 @@ class PreviewController {
     if (printButton) printButton.addEventListener("click", () => this.printPreviewPdf(printButton));
   }
 
+  handleImageWidthInput(input) {
+    const index = input.dataset.ppImageWidth;
+    if (index === undefined) return;
+    this.imageWidths[index] = Number(input.value);
+    // Update the label text
+    const label = input.closest(".pp-field")?.querySelector("b");
+    if (label) label.textContent = `${input.value}%`;
+    this.schedulePreview();
+  }
+
   handleInput(input) {
     const key = input.dataset.setting;
     if (!key) return;
@@ -770,6 +861,12 @@ class PreviewController {
       this.settings[key] = Number(input.value);
     } else {
       this.settings[key] = input.value;
+    }
+    if (key === "separateImageSizes") {
+      this.plugin.saveSettings(this.settings);
+      this.render();
+      this.schedulePreview();
+      return;
     }
     const imageLabel = this.root.querySelector('[data-role="image-width-label"]');
     if (imageLabel) imageLabel.textContent = `${this.settings.imageWidth}%`;
@@ -813,8 +910,10 @@ class PreviewController {
     const target = this.root.querySelector('[data-role="pages"]');
     if (!target) return;
     target.innerHTML = "";
+    const separate = this.settings.separateImageSizes;
+    const widths = separate ? this.imageWidths : null;
     const style = document.createElement("style");
-    style.textContent = buildStyle(this.settings, false);
+    style.textContent = buildStyle(this.settings, false, null, null, widths);
     target.appendChild(style);
 
     const paper = getPaper(this.settings);
@@ -823,7 +922,7 @@ class PreviewController {
     const bodyHeight = pageHeight - mmToPx(this.settings.marginTop * 10) - mmToPx(this.settings.marginBottom * 10);
     const source = document.createElement("div");
     source.className = "pp-source";
-    source.innerHTML = `${this.settings.includeTitle ? `<h1 class="pp-document-title">${escapeHtml(this.documentData.title)}</h1>` : ""}${cleanPreviewHtml(this.documentData.html)}`;
+    source.innerHTML = `${this.settings.includeTitle ? `<h1 class="pp-document-title">${escapeHtml(this.documentData.title)}</h1>` : ""}${cleanPreviewHtml(this.documentData.html, separate)}`;
 
     let pages = [];
     let page = this.createPage(pageWidth, pageHeight);
@@ -891,7 +990,8 @@ class PreviewController {
     try {
       await this.plugin.saveSettings(this.settings);
       const siYuanFont = getComputedStyle(document.body).fontFamily + ", sans-serif";
-      let html = buildExportHtml(this.documentData, this.settings, this.pageCount, this.getPreviewPageHtml(), false, siYuanFont);
+      const imgWidths = this.settings.separateImageSizes ? this.imageWidths : null;
+      let html = buildExportHtml(this.documentData, this.settings, this.pageCount, this.getPreviewPageHtml(), false, siYuanFont, imgWidths);
       const ws = window.siyuan && window.siyuan.config && window.siyuan.config.system && window.siyuan.config.system.workspaceDir;
       if (!ws) throw new Error("Cannot resolve workspace directory");
       const base = ws.replace(/\\/g, "/").replace(/\/+$/, "") + "/data";
@@ -922,7 +1022,8 @@ class PreviewController {
     try {
       await this.plugin.saveSettings(this.settings);
       const siYuanFont = getComputedStyle(document.body).fontFamily + ", sans-serif";
-      let html = buildExportHtml(this.documentData, this.settings, this.pageCount, this.getPreviewPageHtml(), true, siYuanFont);
+      const imgWidths = this.settings.separateImageSizes ? this.imageWidths : null;
+      let html = buildExportHtml(this.documentData, this.settings, this.pageCount, this.getPreviewPageHtml(), true, siYuanFont, imgWidths);
       const ws = window.siyuan && window.siyuan.config && window.siyuan.config.system && window.siyuan.config.system.workspaceDir;
       if (!ws) throw new Error("Cannot resolve workspace directory");
       const base = ws.replace(/\\/g, "/").replace(/\/+$/, "") + "/data";

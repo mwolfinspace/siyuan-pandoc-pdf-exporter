@@ -157,6 +157,20 @@ No additional software required.
 | **Plugin doesn't appear** | Restart SiYuan after installing the plugin |
 | **Chinese characters garbled** | Select a Chinese font (e.g., Microsoft YaHei, Noto Sans SC) in the Font style setting |
 
+## Changelog
+
+### v1.1.0
+
+- **Per-image size control** — new "Separate each image sizes" toggle; when ON, each non-table image gets its own width slider. Table images are listed without sliders. Settings persist per session; per-image values reset each dialog open.
+- **Image width slider** — step changed from 5% to 1% for finer control.
+- **Remove empty image placeholder blocks** — SiYuan leaves empty wrapper blocks around floated images, causing extra blank lines in the PDF export. These wrappers are now removed, keeping only the floated image.
+- **Clickable header/footer links** — links in header and footer areas were blocked by `pointer-events: none`; fixed.
+- **Robust text detection** — zero-width space characters in SiYuan image blocks now properly treated as empty.
+
+### v1.0.0
+
+- Initial release.
+
 ## Compatibility
 
 - **SiYuan version**: 2.9.0+
