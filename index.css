@@ -196,6 +196,15 @@
   overflow: hidden;
 }
 
+.pp-segment-3 {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
+.pp-segment button svg.icon {
+  vertical-align: middle;
+  fill: currentColor;
+}
+
 .pp-segment button {
   min-height: 32px;
   border: 0;

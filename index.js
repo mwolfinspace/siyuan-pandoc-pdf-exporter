@@ -38,6 +38,7 @@ const DEFAULT_SETTINGS = {
   textAlign: "left",
   imageWidth: 65,
   separateImageSizes: false,
+  imageAlign: "right",
 };
 
 function post(endpoint, payload) {
@@ -378,7 +379,18 @@ function normalizeSettings(raw) {
   return settings;
 }
 
-function buildStyle(settings, forExport, marginBoxCss, fontFallback, imageWidths) {
+function imageCss(width, align) {
+  const w = Math.max(10, Math.min(100, Number(width) || 100));
+  if (align === "center" || w >= 100) {
+    return `display: block; margin: 0.35cm auto; width: ${w}%; max-width: ${w}%;`;
+  }
+  if (align === "left") {
+    return `float: left; clear: left; margin: 0 0.75cm 0.55cm 0; width: ${w}%; max-width: ${w}%;`;
+  }
+  return `float: right; clear: right; margin: 0 0 0.55cm 0.75cm; width: ${w}%; max-width: ${w}%;`;
+}
+
+function buildStyle(settings, forExport, marginBoxCss, fontFallback, imageWidths, imageAligns) {
   const paper = getPaper(settings);
   const fontFamily = settings.fontFamily ? `"${settings.fontFamily.replace(/"/g, '\\"')}", sans-serif` : (forExport ? ((fontFallback || "sans-serif").replace(/"/g, "'")) : "var(--b3-font-family-protyle, var(--b3-font-family), sans-serif)");
   const contentFontSize = Number(settings.contentFontSize) || DEFAULT_SETTINGS.contentFontSize;
@@ -386,18 +398,13 @@ function buildStyle(settings, forExport, marginBoxCss, fontFallback, imageWidths
 
   const perImageCss = imageWidths && Object.keys(imageWidths).length > 0
     ? Object.entries(imageWidths).map(([index, width]) => {
-        const w = Math.max(10, Math.min(100, Number(width) || 100));
-        const rule = w < 100
-          ? `float: right; clear: right; margin: 0 0 0.55cm 0.75cm; width: ${w}%; max-width: ${w}%;`
-          : `display: block; width: 100%; max-width: 100%; margin: 0.35cm auto;`;
-        return `    .pp-page-body img[data-pp-image-index="${index}"] {\n      ${rule}\n      height: auto;\n      object-fit: contain;\n      page-break-inside: avoid;\n    }`;
+        const align = imageAligns && imageAligns[index];
+        return `    .pp-page-body img[data-pp-image-index="${index}"] {\n      ${imageCss(width, align)}\n      height: auto;\n      object-fit: contain;\n      page-break-inside: avoid;\n    }`;
       }).join("\n")
     : null;
 
   const imageWidth = Math.max(10, Math.min(100, Number(settings.imageWidth) || 100));
-  const floatRule = imageWidth < 100
-    ? `float: right; clear: right; margin: 0 0 0.55cm 0.75cm; width: ${imageWidth}%; max-width: ${imageWidth}%;`
-    : "display: block; width: 100%; max-width: 100%; margin: 0.35cm auto;";
+  const floatRule = imageCss(imageWidth, settings.imageAlign || "right");
 
   return `
     :root {
@@ -560,8 +567,8 @@ function stripSiYuanStyles(html) {
   });
 }
 
-function buildExportHtml(documentData, settings, pageCount, pageHtmls, forPdfEngine, fontFallback, imageWidths) {
-  const annotate = !!(imageWidths && Object.keys(imageWidths).length > 0);
+function buildExportHtml(documentData, settings, pageCount, pageHtmls, forPdfEngine, fontFallback, imageWidths, imageAligns) {
+  const annotate = !!((imageWidths && Object.keys(imageWidths).length > 0) || (imageAligns && Object.keys(imageAligns).length > 0));
   const cleaned = stripSiYuanStyles(cleanPreviewHtml(documentData.html, annotate));
   const totalPages = pageCount || (pageHtmls ? pageHtmls.length : 1);
   const pageContents = (pageHtmls && pageHtmls.length ? pageHtmls.map(stripSiYuanStyles) : [
@@ -598,7 +605,7 @@ function buildExportHtml(documentData, settings, pageCount, pageHtmls, forPdfEng
   <meta charset="utf-8">
   <title>${escapeHtml(documentData.title)}</title>
   ${linkTags.join("\n  ")}
-  <style>${themeCss}\n${buildStyle(settings, true, marginBoxCss || undefined, fontFallback, imageWidths)}</style>
+  <style>${themeCss}\n${buildStyle(settings, true, marginBoxCss || undefined, fontFallback, imageWidths, imageAligns)}</style>
 </head>
 <body>
   ${body}
@@ -631,7 +638,7 @@ function buildExportHtml(documentData, settings, pageCount, pageHtmls, forPdfEng
   <meta charset="utf-8">
   <title>${escapeHtml(documentData.title)}</title>
   ${linkTags.join("\n  ")}
-  <style>${cssVars}\n${buildStyle(settings, true, null, fontFallback, imageWidths)}${browserCss}</style>
+  <style>${cssVars}\n${buildStyle(settings, true, null, fontFallback, imageWidths, imageAligns)}${browserCss}</style>
 </head>
 <body>
   ${pageContents.map((html, index) => {
@@ -686,6 +693,7 @@ class PreviewController {
     this.fonts = [];
     this.pageCount = 1;
     this.imageWidths = {};
+    this.imageAligns = {};
     this.separateCounts = { regular: 0, table: 0 };
     this.render();
     this.loadFonts();
@@ -777,7 +785,12 @@ class PreviewController {
         ${this.settings.separateImageSizes ? this.renderImageSliders() : `
         <label class="pp-field"><span>Image width: <b data-role="image-width-label">${this.settings.imageWidth}%</b></span>
           <input type="range" min="20" max="100" step="1" data-setting="imageWidth" value="${this.settings.imageWidth}">
-        </label>`}
+        </label>
+        <div class="pp-field"><span>Image alignment</span><div class="pp-segment pp-segment-3">
+          <button data-setting-button="imageAlign" data-value="left" class="${this.settings.imageAlign === "left" ? "active" : ""}"><svg class="icon" viewBox="0 0 20 20" width="14" height="14"><use href="#iconAlignLeft"/></svg></button>
+          <button data-setting-button="imageAlign" data-value="center" class="${this.settings.imageAlign === "center" ? "active" : ""}"><svg class="icon" viewBox="0 0 20 20" width="14" height="14"><use href="#iconAlignCenter"/></svg></button>
+          <button data-setting-button="imageAlign" data-value="right" class="${this.settings.imageAlign === "right" ? "active" : ""}"><svg class="icon" viewBox="0 0 20 20" width="14" height="14"><use href="#iconAlignRight"/></svg></button>
+        </div></div>`}
       </section>
       <div class="pp-button-row">
         <button class="pp-export-button" data-action="export">Export</button>
@@ -792,16 +805,23 @@ class PreviewController {
     const regular = temp.querySelectorAll("img:not(th img):not(td img)");
     const table = temp.querySelectorAll("th img, td img");
     this.separateCounts = { regular: regular.length, table: table.length };
-    // Initialize widths for any newly added images
+    // Initialize widths and aligns for any newly added images
     regular.forEach((img, i) => {
       if (this.imageWidths[i] === undefined) this.imageWidths[i] = this.settings.imageWidth;
+      if (this.imageAligns[i] === undefined) this.imageAligns[i] = this.settings.imageAlign || "right";
     });
     let html = "";
     regular.forEach((img, i) => {
       const w = this.imageWidths[i];
+      const a = this.imageAligns[i] || "right";
       html += `<label class="pp-field"><span>Image #${i + 1}: <b>${w}%</b></span>
         <input type="range" min="20" max="100" step="1" data-pp-image-width="${i}" value="${w}">
-      </label>`;
+      </label>
+      <div class="pp-segment pp-segment-3" style="margin-bottom:12px">
+        <button data-pp-image-align="${i}" data-value="left" class="${a === "left" ? "active" : ""}"><svg class="icon" viewBox="0 0 20 20" width="14" height="14"><use href="#iconAlignLeft"/></svg></button>
+        <button data-pp-image-align="${i}" data-value="center" class="${a === "center" ? "active" : ""}"><svg class="icon" viewBox="0 0 20 20" width="14" height="14"><use href="#iconAlignCenter"/></svg></button>
+        <button data-pp-image-align="${i}" data-value="right" class="${a === "right" ? "active" : ""}"><svg class="icon" viewBox="0 0 20 20" width="14" height="14"><use href="#iconAlignRight"/></svg></button>
+      </div>`;
     });
     table.forEach((img, i) => {
       html += `<div class="pp-toggle" style="justify-content:flex-start;gap:6px"><span>Image in table #${i + 1}</span></div>`;
@@ -825,6 +845,14 @@ class PreviewController {
     this.root.querySelectorAll("[data-pp-image-width]").forEach((input) => {
       input.addEventListener("input", () => this.handleImageWidthInput(input));
       input.addEventListener("change", () => this.handleImageWidthInput(input));
+    });
+    this.root.querySelectorAll("[data-pp-image-align]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const index = button.dataset.ppImageAlign;
+        this.imageAligns[index] = button.dataset.value;
+        this.render();
+        this.schedulePreview();
+      });
     });
     this.root.querySelectorAll("[data-setting-button]").forEach((button) => {
       button.addEventListener("click", () => {
@@ -912,8 +940,9 @@ class PreviewController {
     target.innerHTML = "";
     const separate = this.settings.separateImageSizes;
     const widths = separate ? this.imageWidths : null;
+    const aligns = separate ? this.imageAligns : null;
     const style = document.createElement("style");
-    style.textContent = buildStyle(this.settings, false, null, null, widths);
+    style.textContent = buildStyle(this.settings, false, null, null, widths, aligns);
     target.appendChild(style);
 
     const paper = getPaper(this.settings);
@@ -991,7 +1020,8 @@ class PreviewController {
       await this.plugin.saveSettings(this.settings);
       const siYuanFont = getComputedStyle(document.body).fontFamily + ", sans-serif";
       const imgWidths = this.settings.separateImageSizes ? this.imageWidths : null;
-      let html = buildExportHtml(this.documentData, this.settings, this.pageCount, this.getPreviewPageHtml(), false, siYuanFont, imgWidths);
+      const imgAligns = this.settings.separateImageSizes ? this.imageAligns : null;
+      let html = buildExportHtml(this.documentData, this.settings, this.pageCount, this.getPreviewPageHtml(), false, siYuanFont, imgWidths, imgAligns);
       const ws = window.siyuan && window.siyuan.config && window.siyuan.config.system && window.siyuan.config.system.workspaceDir;
       if (!ws) throw new Error("Cannot resolve workspace directory");
       const base = ws.replace(/\\/g, "/").replace(/\/+$/, "") + "/data";
@@ -1023,7 +1053,8 @@ class PreviewController {
       await this.plugin.saveSettings(this.settings);
       const siYuanFont = getComputedStyle(document.body).fontFamily + ", sans-serif";
       const imgWidths = this.settings.separateImageSizes ? this.imageWidths : null;
-      let html = buildExportHtml(this.documentData, this.settings, this.pageCount, this.getPreviewPageHtml(), true, siYuanFont, imgWidths);
+      const imgAligns = this.settings.separateImageSizes ? this.imageAligns : null;
+      let html = buildExportHtml(this.documentData, this.settings, this.pageCount, this.getPreviewPageHtml(), true, siYuanFont, imgWidths, imgAligns);
       const ws = window.siyuan && window.siyuan.config && window.siyuan.config.system && window.siyuan.config.system.workspaceDir;
       if (!ws) throw new Error("Cannot resolve workspace directory");
       const base = ws.replace(/\\/g, "/").replace(/\/+$/, "") + "/data";
@@ -1097,6 +1128,15 @@ module.exports = class PandocPdfExporterPlugin extends Plugin {
   async onload() {
     this.addIcons(`<symbol id="iconPandocPdfExport" viewBox="0 0 24 24">
       <path d="M6 2h9l5 5v6h-2V8h-4V4H6v7H4V4a2 2 0 0 1 2-2zm10 2.4V6h1.6L16 4.4zM5 13h14a2 2 0 0 1 2 2v4h-4v3H7v-3H3v-4a2 2 0 0 1 2-2zm4 5v2h6v-2H9zm9-2a1 1 0 1 0 0-2 1 1 0 0 0 0 2z"></path>
+    </symbol>
+    <symbol id="iconAlignLeft" viewBox="0 0 20 20">
+      <path d="M3 3h14v2H3V3zm0 4h10v2H3V7zm0 4h14v2H3v-2zm0 4h10v2H3v-2z"></path>
+    </symbol>
+    <symbol id="iconAlignCenter" viewBox="0 0 20 20">
+      <path d="M3 3h14v2H3V3zm2 4h10v2H5V7zm-2 4h14v2H3v-2zm2 4h10v2H5v-2z"></path>
+    </symbol>
+    <symbol id="iconAlignRight" viewBox="0 0 20 20">
+      <path d="M3 3h14v2H3V3zm4 4h10v2H7V7zm-4 4h14v2H3v-2zm4 4h10v2H7v-2z"></path>
     </symbol>`);
     await this.loadSettings();
     const button = this.addTopBar({
