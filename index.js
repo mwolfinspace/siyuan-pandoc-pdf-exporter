@@ -258,6 +258,21 @@ function cleanPreviewHtml(html, annotateImages) {
       node.remove();
     }
   });
+  // Convert newlines in text nodes to <br> (SiYuan uses \n for Shift+Enter)
+  wrapper.querySelectorAll("*").forEach((node) => {
+    if (node.closest("pre, code")) return;
+    Array.from(node.childNodes).forEach((child) => {
+      if (child.nodeType === Node.TEXT_NODE && /\r?\n/.test(child.textContent)) {
+        const parts = child.textContent.split(/\r?\n/);
+        const fragment = document.createDocumentFragment();
+        parts.forEach((part, i) => {
+          if (part) fragment.appendChild(document.createTextNode(part));
+          if (i < parts.length - 1) fragment.appendChild(document.createElement("br"));
+        });
+        node.replaceChild(fragment, child);
+      }
+    });
+  });
   // Annotate images with indices for per-image size control
   if (annotateImages) {
     let idx = 0;
@@ -456,6 +471,7 @@ ${marginBoxCss}
       color: #1f1f1f;
       line-height: 1.55;
       text-align: var(--pp-text-align);
+      white-space: normal;
     }
     .pp-page-body a { color: #175199; text-decoration: underline; word-break: break-all; }
     .pp-page-body :where(p, div, span, li, td, th, blockquote) {
@@ -701,6 +717,10 @@ class PreviewController {
   }
 
   render() {
+    const pages = this.root.querySelector('[data-role="pages"]');
+    if (pages) this._pendingScroll = pages.scrollTop;
+    const controls = this.root.querySelector(".pp-controls");
+    if (controls) this._pendingControlsScroll = controls.scrollTop;
     this.root.className = "pp-shell";
     this.root.innerHTML = `
       <main class="pp-preview-area">
@@ -727,6 +747,12 @@ class PreviewController {
       </aside>
     `;
     this.bindEvents();
+    if (this._pendingControlsScroll !== undefined) {
+      requestAnimationFrame(() => {
+        const ctrl = this.root.querySelector(".pp-controls");
+        if (ctrl) ctrl.scrollTop = this._pendingControlsScroll;
+      });
+    }
   }
 
   renderControls() {
@@ -937,6 +963,8 @@ class PreviewController {
   updatePreview() {
     const target = this.root.querySelector('[data-role="pages"]');
     if (!target) return;
+    const scrollTop = this._pendingScroll !== undefined ? this._pendingScroll : target.scrollTop;
+    this._pendingScroll = undefined;
     target.innerHTML = "";
     const separate = this.settings.separateImageSizes;
     const widths = separate ? this.imageWidths : null;
@@ -978,6 +1006,7 @@ class PreviewController {
     target.querySelectorAll("img").forEach((img) => {
       if (!img.complete) img.addEventListener("load", () => this.schedulePreview(), { once: true });
     });
+    requestAnimationFrame(() => { target.scrollTop = scrollTop; });
   }
 
   createPage(width, height) {
