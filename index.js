@@ -1079,7 +1079,6 @@ class PreviewController {
         // Clone preview pages (they already have correct pagination with loaded images)
         const paper = getPaper(this.settings);
         const previewPages = pages ? Array.from(pages.querySelectorAll(".pp-page")) : [];
-        console.log(`[pp] Print: cloning ${previewPages.length} pages, preview shows ${this.pageCount}`);
         const headStyle = pages ? pages.querySelector("style").outerHTML : "";
         const printStyle = `
     <style>
@@ -1096,6 +1095,7 @@ class PreviewController {
         padding-bottom: max(0.2cm, calc(var(--pp-margin-bottom) - 3mm)) !important;
       }
       .pp-page:last-child { break-after: auto !important; page-break-after: auto !important; }
+      .pp-page-mark { pointer-events: auto !important; }
     </style>`;
         const autoPrint = `<script>var _pp=0;var _ii=setInterval(function(){if(!_pp&&Array.from(document.images).every(function(i){return i.complete})){clearInterval(_ii);_pp=1;setTimeout(function(){window.print()},300)}},100);setTimeout(function(){if(!_pp){clearInterval(_ii);_pp=1;window.print()}},12000);window.onafterprint=function(){_pp=1};<\/script>`;
         html = `<!doctype html>
