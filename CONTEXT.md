@@ -81,10 +81,10 @@ Renders a split-pane dialog:
 When SiYuan is accessed via a web browser (not the desktop app), `getFrontend()` returns `"browser-desktop"`. The plugin detects this via `isWeb`:
 
 - **Export button** shows a notification: "Export is only supported in the desktop app. Use Print instead." — The button is also visually dimmed (`.pp-export-disabled`)
-- **Print via Browser** in web mode builds the export HTML, removes forced `break-after: page`
-  and `min-height` CSS, injects auto-print (`window.print()`) and auto-close scripts, then
-  renders in a hidden same-origin iframe and calls `iframe.contentWindow.print()`.
-  The browser's native print engine paginates all content naturally across pages.
+- **Print via Browser** in web mode clones the preview pages directly (which already have
+  correct pagination), injects minimal print CSS with `break-after:page !important` and
+  `page-break-after:always !important`, plus auto-print/auto-close script, and renders
+  in a hidden same-origin iframe → `iframe.contentWindow.print()`.
 - Top-left kicker shows "Web access" instead of "Desktop"
 - `require("child_process")` is wrapped in try-catch so the plugin loads without error in browser context
 

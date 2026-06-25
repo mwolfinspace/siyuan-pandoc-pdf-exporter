@@ -1060,21 +1060,38 @@ class PreviewController {
       const imgAligns = this.settings.separateImageSizes ? this.imageAligns : null;
       let html = buildExportHtml(this.documentData, this.settings, this.pageCount, this.getPreviewPageHtml(), false, siYuanFont, imgWidths, imgAligns);
       if (this.isWeb) {
-        // Build export HTML but remove forced page breaks — let the browser's print
-        // engine paginate all content naturally across pages.  Override the page-split
-        // CSS that works for WeasyPrint/desktop but breaks iframe-based print().
-        html = html
-          .replace("break-after: page !important", "break-after: auto")
-          .replace("min-height: var(--pp-page-height)", "min-height: 0");
-        // Inject auto-print + auto-close script
-        html = html.replace("</body>", `<script>window.onload=function(){setTimeout(function(){window.print()},800)};window.onafterprint=function(){setTimeout(function(){window.close()},1e3)};<\/script></body>`);
-        // Render in hidden same-origin iframe, then call print()
+        // Print the preview pages directly — they already have the correct pagination.
+        // Clone the pages container, inject minimal print CSS, and render in iframe.
+        const pages = this.root.querySelector('[data-role="pages"]');
+        const paper = getPaper(this.settings);
+        const previewPages = pages ? Array.from(pages.querySelectorAll(".pp-page")) : [];
+        const headHtml = pages ? pages.querySelector("style").outerHTML : "";
+        const printStyle = `
+    <style>
+      @page { size: ${paper.widthMm}mm ${paper.heightMm}mm; margin: 1cm; }
+      body { margin: 0; padding: 0; background: #fff; }
+      .pp-pages { padding: 0; display: block; }
+      .pp-page {
+        break-after: page !important;
+        page-break-after: always !important;
+        box-shadow: none !important;
+        margin: 0 auto !important;
+        min-height: 0 !important;
+      }
+      .pp-page:last-child { break-after: auto; page-break-after: auto; }
+      .pp-page-body { overflow: visible !important; }
+    </style>`;
+        const autoPrint = `<script>window.onload=function(){setTimeout(function(){window.print()},800)};window.onafterprint=function(){setTimeout(function(){window.close()},1e3)};<\/script>`;
+        const printHtml = `<!doctype html>
+<html><head><meta charset="utf-8"><title>${escapeHtml(this.documentData.title)}</title>${headHtml}${printStyle}${autoPrint}</head><body>
+  <div class="pp-pages">${previewPages.map(p => p.outerHTML).join("")}</div>
+</body></html>`;
         const iframe = document.createElement("iframe");
         iframe.style.cssText = "position:fixed;top:-9999px;left:0;width:1px;height:1px;border:none;";
         document.body.appendChild(iframe);
         const idoc = iframe.contentWindow.document;
         idoc.open();
-        idoc.write(html);
+        idoc.write(printHtml);
         idoc.close();
         showMessage("Opening print dialog...", 3000, "info");
         setTimeout(() => {
