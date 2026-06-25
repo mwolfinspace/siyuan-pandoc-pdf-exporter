@@ -52,18 +52,20 @@ Build a SiYuan plugin that exports the active document to a polished PDF through
 
 4. Export
    - Builds a complete HTML document with print CSS and `@page`.
-   - Calls Pandoc:
+   - **Desktop**: saves to temp file, opens in browser for Ctrl+P → Save as PDF.
+   - **Web**: renders in hidden same-origin iframe, auto-triggers `window.print()`.
+   - PDF export via Pandoc/WeasyPrint (desktop only):
      - input: `/temp/pandoc-pdf-exporter/export.html`
      - output: `/temp/pandoc-pdf-exporter/export.pdf`
-     - first tries `--pdf-engine=wkhtmltopdf`
-     - falls back to `--pdf-engine=xelatex`
-   - Downloads the result through `/api/file/getFile`.
+     - first tries direct WeasyPrint (best CSS fidelity)
+     - falls back to SiYuan's Pandoc API with engines: weasyprint → wkhtmltopdf → pdfroff → xelatex → lualatex → pdflatex
 
 ## Known Risks / Follow-Up Work
 
 1. **True pagination**
    - Current paginator splits at block level. Continue by splitting long paragraphs, code blocks, and tables across pages.
-   - Add a page count recalculation pass after all images finish loading.
+   - ~~Add a page count recalculation pass after all images finish loading.~~ (Done: `updatePreview()` re-runs on image load events.)
+   - **CRITICAL**: Print resolution renders content ~1% taller than screen. Apply 3mm padding relief and `overflow:hidden` in the print CSS to prevent blank pages (see `CONTEXT.md` "Lessons Learned").
 
 2. **SiYuan source fidelity**
    - DOM capture is practical but may miss some internal rendering details.
@@ -73,7 +75,7 @@ Build a SiYuan plugin that exports the active document to a polished PDF through
 3. **Pandoc PDF engine**
    - `wkhtmltopdf` is best for CSS fidelity, but may be unavailable on some installs.
    - `xelatex` fallback is available for many Pandoc installs, but will not honor every CSS rule.
-   - Add `weasyprint` or a custom LaTeX template fallback with useful error messages.
+   - ~~Add `weasyprint` or a custom LaTeX template fallback with useful error messages.~~ (Done: direct WeasyPrint is the primary path, with Pandoc API as fallback.)
 
 4. **Header/footer fidelity**
    - HTML preview shows header/footer per page.
@@ -98,6 +100,21 @@ Build a SiYuan plugin that exports the active document to a polished PDF through
    - Add zoom controls and fit-to-width.
    - Add page thumbnails like Word's print panel.
    - Add progress states for conversion and file download.
+
+9. **Web mode print (completed)**
+   - Web access (HTTP mode) detected via `getFrontend() === "browser-desktop"`.
+   - Export button disabled with notification in web mode.
+   - Print via Browser uses preview DOM cloning + same-origin iframe.
+   - See `CONTEXT.md` "Lessons Learned" for all the fixes required to match preview.
+   - Key issues solved:
+     - `@page margin: 0` to prevent browser dialog margins from overriding CSS padding.
+     - `overflow: hidden` + 3mm padding relief to absorb print-resolution rendering differences.
+     - Resolved fonts via `getComputedStyle(.pp-page-body).fontFamily` (CSS variables don't work in iframe).
+     - Image pre-loading before DOM capture (prevents stale pagination).
+     - `:last-child { break-after: auto !important }` (prevent blank last page).
+     - `pointer-events: auto` on headers/footers (links work in PDF).
+     - `html,body` style reset for proper page breaking.
+   - Remaining: auto-close iframe after print (browser-dependent).
 
 ## Suggested Next Steps For Another Agent
 
