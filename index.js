@@ -1079,11 +1079,11 @@ class PreviewController {
         margin: 0 auto !important;
         min-height: var(--pp-page-height) !important;
       }
-      .pp-page:last-child { break-after: auto; page-break-after: auto; }
+      .pp-page:last-child { break-after: auto !important; page-break-after: auto !important; }
       .pp-page-body { overflow: visible !important; }
       .pp-page-mark { font-family: var(--pp-font-family, sans-serif) !important; }
     </style>`;
-        const autoPrint = `<script>window.onload=function(){setTimeout(function(){window.print()},800)};window.onafterprint=function(){setTimeout(function(){window.close()},1e3)};<\/script>`;
+        const autoPrint = `<script>var _pp=0;window.addEventListener("load",function(){setTimeout(function(){if(!_pp){_pp=1;window.print()}},800)},{once:true});window.onafterprint=function(){_pp=1};<\/script>`;
         const printHtml = `<!doctype html>
 <html><head><meta charset="utf-8"><title>${escapeHtml(this.documentData.title)}</title>${headHtml}${printStyle}${autoPrint}</head><body>
   <div class="pp-pages">${previewPages.map(p => p.outerHTML).join("")}</div>
@@ -1098,9 +1098,8 @@ class PreviewController {
         showMessage("Opening print dialog...", 3000, "info");
         setTimeout(() => {
           iframe.contentWindow.focus();
-          iframe.contentWindow.print();
-          setTimeout(() => iframe.remove(), 3000);
         }, 1000);
+        setTimeout(() => iframe.remove(), 120000);
       } else {
         // Desktop mode: write to temp file, open in default browser
         const ws = window.siyuan && window.siyuan.config && window.siyuan.config.system && window.siyuan.config.system.workspaceDir;
