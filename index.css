@@ -257,6 +257,14 @@
   cursor: not-allowed;
 }
 
+.pp-download-pdf-button {
+  background: #2ea44f;
+  color: #fff;
+}
+.pp-download-pdf-button:hover {
+  background: #2c974b;
+}
+
 @media (max-width: 900px) {
   .pp-shell {
     grid-template-columns: 1fr;

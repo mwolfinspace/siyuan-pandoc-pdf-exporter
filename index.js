@@ -114,6 +114,19 @@ function expandTokens(template, context) {
     .replace(/%title/g, context.title || "");
 }
 
+function loadCdnScript(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = src;
+    s.onload = resolve;
+    s.onerror = () => reject(new Error("Failed to load: " + src));
+    document.head.appendChild(s);
+  });
+}
+
+const CDN_HTML2CANVAS = "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
+const CDN_JSPDF = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+
 function buildMarginBoxCss(settings) {
   const tokens = nowTokens();
   const lines = [];
@@ -824,6 +837,7 @@ class PreviewController {
         </div></div>`}
       </section>
       <div class="pp-button-row">
+        <button class="pp-export-button pp-download-pdf-button" data-action="download-pdf">Download PDF</button>
         <button class="pp-export-button ${this.isWeb ? "pp-export-disabled" : ""}" data-action="export">${this.isWeb ? "Export (desktop only)" : "Export"}</button>
         <button class="pp-export-button pp-print-button" data-action="print">${this.isWeb ? "Print" : "Print via Browser"}</button>
       </div>
@@ -905,6 +919,8 @@ class PreviewController {
     });
     const printButton = this.root.querySelector('[data-action="print"]');
     if (printButton) printButton.addEventListener("click", () => this.printPreviewPdf(printButton));
+    const downloadPdfButton = this.root.querySelector('[data-action="download-pdf"]');
+    if (downloadPdfButton) downloadPdfButton.addEventListener("click", () => this.downloadPdf(downloadPdfButton));
   }
 
   handleImageWidthInput(input) {
@@ -1135,6 +1151,76 @@ class PreviewController {
     } catch (err) {
       console.error(`[${PLUGIN_NAME}] print failed`, err);
       showMessage("Print failed: " + err.message, 5000, "error");
+    } finally {
+      button.disabled = false;
+      button.textContent = original;
+    }
+  }
+
+  async downloadPdf(button) {
+    const original = button.textContent;
+    button.disabled = true;
+    button.textContent = "Loading...";
+    try {
+      await this.plugin.saveSettings(this.settings);
+      // Ensure images are loaded so pagination is settled
+      const pagesEl = this.root.querySelector('[data-role="pages"]');
+      if (pagesEl) {
+        const unloaded = Array.from(pagesEl.querySelectorAll("img")).filter(img => !img.complete);
+        if (unloaded.length > 0) {
+          button.textContent = "Loading images...";
+          await Promise.all(unloaded.map(img => new Promise(resolve => {
+            img.addEventListener("load", resolve, { once: true });
+            img.addEventListener("error", resolve, { once: true });
+          })));
+          await new Promise(resolve => setTimeout(resolve, 150));
+        }
+      }
+      // Load CDN libraries
+      button.textContent = "Loading PDF libraries...";
+      await loadCdnScript(CDN_HTML2CANVAS);
+      await loadCdnScript(CDN_JSPDF);
+      const paper = getPaper(this.settings);
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF({
+        orientation: paper.widthMm > paper.heightMm ? "l" : "p",
+        unit: "mm",
+        format: [paper.widthMm, paper.heightMm],
+      });
+      const pageElements = pagesEl ? Array.from(pagesEl.querySelectorAll(".pp-page")) : [];
+      if (pageElements.length === 0) throw new Error("No pages found in preview.");
+      for (let i = 0; i < pageElements.length; i++) {
+        button.textContent = `Capturing page ${i + 1}/${pageElements.length}...`;
+        // Remove preview-only visual styling for clean capture
+        const el = pageElements[i];
+        const origShadow = el.style.boxShadow;
+        const origRadius = el.style.borderRadius;
+        el.style.boxShadow = "none";
+        el.style.borderRadius = "0";
+        let canvas;
+        try {
+          canvas = await html2canvas(el, {
+            scale: 3,
+            useCORS: true,
+            allowTaint: true,
+            backgroundColor: "#ffffff",
+            logging: false,
+          });
+        } finally {
+          el.style.boxShadow = origShadow;
+          el.style.borderRadius = origRadius;
+        }
+        const imgData = canvas.toDataURL("image/jpeg", 0.92);
+        if (i > 0) pdf.addPage([paper.widthMm, paper.heightMm]);
+        pdf.addImage(imgData, "JPEG", 0, 0, paper.widthMm, paper.heightMm);
+      }
+      button.textContent = "Saving PDF...";
+      const name = (this.documentData && this.documentData.title) || "document";
+      pdf.save(name + ".pdf");
+      showMessage("PDF downloaded.", 3000, "info");
+    } catch (err) {
+      console.error(`[${PLUGIN_NAME}] download PDF failed`, err);
+      showMessage("Download failed: " + err.message + ". Try Print instead.", 6000, "error");
     } finally {
       button.disabled = false;
       button.textContent = original;

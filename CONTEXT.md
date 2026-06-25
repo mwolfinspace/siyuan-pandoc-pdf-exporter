@@ -4,7 +4,7 @@
 A full-featured SiYuan plugin that provides WYSIWYG print preview + PDF export with Pandoc/WeasyPrint backends.
 
 ## Files
-- `index.js` (~1287 lines) — Main plugin + PreviewController class
+- `index.js` (~1396 lines) — Main plugin + PreviewController class
 - `index.css` (254 lines) — Preview dialog UI styles
 - `plugin.json` — Metadata (name: siyuan-pandoc-pdf-exporter, author: Xedryk, v1.1.0)
 - `README_EXPORT.md` — User-facing documentation
@@ -32,11 +32,19 @@ Renders a split-pane dialog:
 3. `updatePreview()` — Paginates content into `.pp-page` sections, auto-splits overflow
 4. Per-page headers/footers rendered via `buildPageMarkHtml()` with token expansion
 
-#### Export Pipeline (two paths)
-**A. Print via Browser** (`printPreviewPdf`):
-- Builds export HTML for browser print (Ctrl+P → Save as PDF)
-- Saves temp HTML to workspace `data/temp/pandoc-pdf-exporter/print.html`
-- Opens in default browser via `start ""` command
+#### Export Pipeline (three paths)
+**A. Download PDF** (`downloadPdf`):
+- Captures each preview `.pp-page` as a canvas at 3x scale (~288 DPI) using `html2canvas`.
+- Assembles pages into a PDF using `jsPDF`.
+- Triggers direct download — no browser print dialog.
+- **Matches preview exactly** because it captures what's on screen.
+- Requires CDN libraries (loaded dynamically from CDN).
+
+**B. Print via Browser** (`printPreviewPdf`):
+- Two sub-paths:
+  - **Web mode**: Renders cloned preview pages in a hidden same-origin iframe with print CSS overrides, auto-triggers `window.print()`.
+  - **Desktop**: Saves temp HTML to workspace `data/temp/pandoc-pdf-exporter/print.html`, opens in default browser for Ctrl+P.
+- Prints or saves as PDF via the browser's print dialog.
 
 **B. Export PDF** (`exportPdf`):
 1. Builds export HTML with full CSS (`@page` with margin boxes)
@@ -142,6 +150,27 @@ These rules MUST be followed to keep the print output matching the preview:
 2. **Print resolution rendering difference**: Screen (96 DPI) and print (300 DPI) render fonts and images differently. Content can be 1-3% taller in print depending on content mix (text-heavy has larger difference). The ~2mm padding reduction covers ~1%; for heavier documents, 99% scale is needed.
 3. **`@page size` ignored by dialog**: Chrome's print dialog doesn't auto-select the paper size from CSS. Must be set manually.
 4. **Dialog margins override CSS**: Chrome's print dialog "Margins" setting overrides `@page { margin }`. Must be set to "None" for CSS padding to work correctly.
+
+## Download PDF (Direct Generation)
+
+The **Download PDF** button bypasses the browser print dialog entirely by capturing preview pages as canvas images and assembling them into a PDF file:
+
+1. Waits for all preview images to load.
+2. Loads `html2canvas` and `jsPDF` from CDN (cloudflare) on demand.
+3. For each `.pp-page`, removes preview-only styling (shadow, rounded corners) and captures at 3x scale (~288 DPI) using `html2canvas`.
+4. Embeds each canvas as a JPEG image in a jsPDF document with the correct paper dimensions.
+5. Triggers a file download (no print dialog, no user settings).
+
+**Benefits**:
+- Matches preview exactly (captures screen rendering, not print rendering)
+- No print dialog (no scale/margin/paper settings to configure)
+- Works identically in web and desktop mode
+- No blank pages (no print-resolution overflow issue)
+
+**Limitations**:
+- Requires internet access for first use (CDN library loading)
+- Text is rasterized (not selectable in the PDF, since it's embedded as images)
+- ~288 DPI resolution (adequate for screen viewing but below true 300 DPI print)
 
 ## Web Access Support (HTTP mode)
 
