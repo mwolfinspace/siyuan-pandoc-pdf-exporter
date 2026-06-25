@@ -1061,9 +1061,21 @@ class PreviewController {
       const imgAligns = this.settings.separateImageSizes ? this.imageAligns : null;
       let html = buildExportHtml(this.documentData, this.settings, this.pageCount, this.getPreviewPageHtml(), false, siYuanFont, imgWidths, imgAligns);
       if (this.isWeb) {
-        // Print the preview pages directly — they already have the correct pagination.
-        // Clone the pages container, inject minimal print CSS, and render in iframe.
+        // Ensure images are fully loaded before capturing the DOM
         const pages = this.root.querySelector('[data-role="pages"]');
+        if (pages) {
+          const unloaded = Array.from(pages.querySelectorAll("img")).filter(img => !img.complete);
+          if (unloaded.length > 0) {
+            button.textContent = "Loading images...";
+            await Promise.all(unloaded.map(img => new Promise(resolve => {
+              img.addEventListener("load", resolve, { once: true });
+              img.addEventListener("error", resolve, { once: true });
+            })));
+            // Wait for re-pagination triggered by image load handlers (debounced 80ms)
+            await new Promise(resolve => setTimeout(resolve, 150));
+          }
+        }
+        // Clone the preview pages with correct pagination and render in iframe
         const paper = getPaper(this.settings);
         const previewPages = pages ? Array.from(pages.querySelectorAll(".pp-page")) : [];
         const headHtml = pages ? pages.querySelector("style").outerHTML : "";
@@ -1079,11 +1091,13 @@ class PreviewController {
         box-shadow: none !important;
         margin: 0 auto !important;
         min-height: var(--pp-page-height) !important;
+        padding-bottom: max(0.1cm, calc(var(--pp-margin-bottom) - 0.5mm)) !important;
+        overflow: hidden !important;
       }
       .pp-page:last-child { break-after: auto !important; page-break-after: auto !important; }
       .pp-page-body { overflow: visible !important; }
     </style>`;
-        const autoPrint = `<script>var _pp=0;window.addEventListener("load",function(){setTimeout(function(){if(!_pp){_pp=1;window.print()}},800)},{once:true});window.onafterprint=function(){_pp=1};<\/script>`;
+        const autoPrint = `<script>var _pp=0;var _ii=setInterval(function(){if(!_pp&&Array.from(document.images).every(function(i){return i.complete})){clearInterval(_ii);_pp=1;setTimeout(function(){window.print()},300)}},100);setTimeout(function(){if(!_pp){clearInterval(_ii);_pp=1;window.print()}},12000);window.onafterprint=function(){_pp=1};<\/script>`;
         const printHtml = `<!doctype html>
 <html><head><meta charset="utf-8"><title>${escapeHtml(this.documentData.title)}</title>${headHtml}${printStyle}${autoPrint}</head><body>
   <div class="pp-pages">${previewPages.map(p => p.outerHTML).join("")}</div>
