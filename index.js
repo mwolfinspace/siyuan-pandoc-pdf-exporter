@@ -1068,7 +1068,7 @@ class PreviewController {
         const headHtml = pages ? pages.querySelector("style").outerHTML : "";
         const printStyle = `
     <style>
-      @page { size: ${paper.widthMm}mm ${paper.heightMm}mm; margin: 1cm; }
+      @page { size: ${paper.widthMm}mm ${paper.heightMm}mm; margin: 0; }
       body { margin: 0; padding: 0; background: #fff; }
       .pp-pages { padding: 0; display: block; }
       .pp-page {
@@ -1076,10 +1076,11 @@ class PreviewController {
         page-break-after: always !important;
         box-shadow: none !important;
         margin: 0 auto !important;
-        min-height: 0 !important;
+        min-height: var(--pp-page-height) !important;
       }
       .pp-page:last-child { break-after: auto; page-break-after: auto; }
       .pp-page-body { overflow: visible !important; }
+      .pp-page-mark { font-family: var(--pp-font-family, sans-serif) !important; }
     </style>`;
         const autoPrint = `<script>window.onload=function(){setTimeout(function(){window.print()},800)};window.onafterprint=function(){setTimeout(function(){window.close()},1e3)};<\/script>`;
         const printHtml = `<!doctype html>
