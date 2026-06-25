@@ -1070,6 +1070,7 @@ class PreviewController {
         const printStyle = `
     <style>
       @page { size: ${paper.widthMm}mm ${paper.heightMm}mm; margin: 0; }
+      :root { --pp-font-family: ${siYuanFont}; }
       body { margin: 0; padding: 0; background: #fff; }
       .pp-pages { padding: 0; display: block; }
       .pp-page {
@@ -1081,7 +1082,6 @@ class PreviewController {
       }
       .pp-page:last-child { break-after: auto !important; page-break-after: auto !important; }
       .pp-page-body { overflow: visible !important; }
-      .pp-page-mark { font-family: var(--pp-font-family, sans-serif) !important; }
     </style>`;
         const autoPrint = `<script>var _pp=0;window.addEventListener("load",function(){setTimeout(function(){if(!_pp){_pp=1;window.print()}},800)},{once:true});window.onafterprint=function(){_pp=1};<\/script>`;
         const printHtml = `<!doctype html>
