@@ -577,7 +577,7 @@ ${marginBoxCss}
       font-size: 9pt;
       color: #69707a;
       line-height: 1.25;
-      pointer-events: none;
+      pointer-events: ${forExport ? "auto" : "none"};
       z-index: 10;
     }
     .pp-page-mark a { pointer-events: auto; }
@@ -691,6 +691,7 @@ function buildExportHtml(documentData, settings, pageCount, pageHtmls, forPdfEng
       height: auto !important;
     }
     .pp-page-body { overflow: visible !important; height: 100% !important; }
+    .pp-page-mark { pointer-events: auto !important; }
   `;
 
   return `<!doctype html>
