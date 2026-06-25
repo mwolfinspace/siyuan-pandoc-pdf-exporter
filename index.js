@@ -1084,7 +1084,7 @@ class PreviewController {
     <style>
       @page { size: ${paper.widthMm}mm ${paper.heightMm}mm; margin: 0; }
       :root { --pp-font-family: ${contentFont}; }
-      body { margin: 0; padding: 0; background: #fff; }
+      html, body { margin: 0; padding: 0; background: #fff; overflow: visible !important; min-height: 0 !important; }
       .pp-pages { padding: 0; display: block; }
       .pp-page {
         break-after: page !important;
