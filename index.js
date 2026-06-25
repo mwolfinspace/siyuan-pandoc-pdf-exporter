@@ -1053,6 +1053,18 @@ class PreviewController {
     const original = button.textContent;
     button.disabled = true;
     button.textContent = "Opening...";
+    // Open popup before any await to stay in the user gesture chain
+    let popup = null;
+    if (this.isWeb) {
+      popup = window.open("", "_blank");
+      if (!popup) {
+        showMessage("Pop-up was blocked. Please allow pop-ups, then try again.", 6000, "info");
+        button.disabled = false;
+        button.textContent = original;
+        return;
+      }
+      popup.document.write("Loading print preview...");
+    }
     try {
       await this.plugin.saveSettings(this.settings);
       const siYuanFont = getComputedStyle(document.body).fontFamily + ", sans-serif";
@@ -1060,21 +1072,19 @@ class PreviewController {
       const imgAligns = this.settings.separateImageSizes ? this.imageAligns : null;
       let html = buildExportHtml(this.documentData, this.settings, this.pageCount, this.getPreviewPageHtml(), false, siYuanFont, imgWidths, imgAligns);
       if (this.isWeb) {
-        // Web mode: render in hidden same-origin iframe, then call print()
-        // Blob URLs have null origin — images and CSS assets would fail to load.
-        const iframe = document.createElement("iframe");
-        iframe.style.cssText = "position:fixed;top:-9999px;left:0;width:1px;height:1px;border:none;";
-        document.body.appendChild(iframe);
-        const idoc = iframe.contentWindow.document;
-        idoc.open();
-        idoc.write(html);
-        idoc.close();
-        showMessage("Opening print dialog...", 3000, "info");
-        setTimeout(() => {
-          iframe.contentWindow.focus();
-          iframe.contentWindow.print();
-          setTimeout(() => iframe.remove(), 3000);
-        }, 500);
+        // Write to SiYuan's temp directory, then navigate popup to server URL.
+        // Do NOT resolveImagePaths (makes file:/// URIs) — keep relative paths
+        // so images load correctly when served via the SiYuan HTTP server.
+        const ws = window.siyuan && window.siyuan.config && window.siyuan.config.system && window.siyuan.config.system.workspaceDir;
+        if (!ws) throw new Error("Cannot resolve workspace directory");
+        const base = ws.replace(/\\/g, "/").replace(/\/+$/, "") + "/data";
+        const tmpDir = base + "/temp/pandoc-pdf-exporter";
+        const absHtml = tmpDir + "/print.html";
+        fs.mkdirSync(tmpDir, { recursive: true });
+        fs.writeFileSync(absHtml, html, "utf-8");
+        const url = window.location.origin + "/temp/pandoc-pdf-exporter/print.html";
+        popup.location.href = url;
+        showMessage("Page opened. Press Ctrl+P → Save as PDF.", 8000, "info");
       } else {
         // Desktop mode: write to temp file, open in default browser
         const ws = window.siyuan && window.siyuan.config && window.siyuan.config.system && window.siyuan.config.system.workspaceDir;
