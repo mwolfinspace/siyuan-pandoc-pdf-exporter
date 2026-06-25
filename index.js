@@ -643,10 +643,11 @@ function buildExportHtml(documentData, settings, pageCount, pageHtmls, forPdfEng
     html, body { overflow: visible !important; min-height: 0 !important; }
     .pp-export-page {
       break-after: page !important;
-      overflow: visible !important;
+      overflow: hidden !important;
       padding-top: max(0cm, calc(var(--pp-margin-top) - 0.3cm)) !important;
       padding-bottom: max(0.2cm, calc(var(--pp-margin-bottom) - 0.5mm)) !important;
     }
+    .pp-export-page:last-child { break-after: auto !important; }
     .pp-page-body { overflow: visible !important; }
   `;
 
@@ -1060,9 +1061,9 @@ class PreviewController {
       const contentFont = previewBody ? getComputedStyle(previewBody).fontFamily + ", sans-serif" : getComputedStyle(document.body).fontFamily + ", sans-serif";
       const imgWidths = this.settings.separateImageSizes ? this.imageWidths : null;
       const imgAligns = this.settings.separateImageSizes ? this.imageAligns : null;
-      let html = buildExportHtml(this.documentData, this.settings, this.pageCount, this.getPreviewPageHtml(), false, contentFont, imgWidths, imgAligns);
+      let html;
       if (this.isWeb) {
-        // Ensure images are fully loaded before capturing the DOM
+        // Ensure images are fully loaded so pagination is accurate
         const pages = this.root.querySelector('[data-role="pages"]');
         if (pages) {
           const unloaded = Array.from(pages.querySelectorAll("img")).filter(img => !img.complete);
@@ -1072,43 +1073,19 @@ class PreviewController {
               img.addEventListener("load", resolve, { once: true });
               img.addEventListener("error", resolve, { once: true });
             })));
-            // Wait for re-pagination triggered by image load handlers (debounced 80ms)
             await new Promise(resolve => setTimeout(resolve, 150));
           }
         }
-        // Clone the preview pages with correct pagination and render in iframe
-        const paper = getPaper(this.settings);
-        const previewPages = pages ? Array.from(pages.querySelectorAll(".pp-page")) : [];
-        const headHtml = pages ? pages.querySelector("style").outerHTML : "";
-        const printStyle = `
-    <style>
-      @page { size: ${paper.widthMm}mm ${paper.heightMm}mm; margin: 0; }
-      :root { --pp-font-family: ${contentFont}; }
-      body { margin: 0; padding: 0; background: #fff; }
-      .pp-pages { padding: 0; display: block; }
-      .pp-page {
-        break-after: page !important;
-        page-break-after: always !important;
-        box-shadow: none !important;
-        margin: 0 auto !important;
-        min-height: var(--pp-page-height) !important;
-        padding-bottom: max(0.1cm, calc(var(--pp-margin-bottom) - 0.5mm)) !important;
-        overflow: hidden !important;
-      }
-      .pp-page:last-child { break-after: auto !important; page-break-after: auto !important; }
-      .pp-page-body { overflow: visible !important; }
-    </style>`;
+        // Build fresh print HTML after images have loaded and pagination has settled
+        html = buildExportHtml(this.documentData, this.settings, this.pageCount, this.getPreviewPageHtml(), false, contentFont, imgWidths, imgAligns);
         const autoPrint = `<script>var _pp=0;var _ii=setInterval(function(){if(!_pp&&Array.from(document.images).every(function(i){return i.complete})){clearInterval(_ii);_pp=1;setTimeout(function(){window.print()},300)}},100);setTimeout(function(){if(!_pp){clearInterval(_ii);_pp=1;window.print()}},12000);window.onafterprint=function(){_pp=1};<\/script>`;
-        const printHtml = `<!doctype html>
-<html><head><meta charset="utf-8"><title>${escapeHtml(this.documentData.title)}</title>${headHtml}${printStyle}${autoPrint}</head><body>
-  <div class="pp-pages">${previewPages.map(p => p.outerHTML).join("")}</div>
-</body></html>`;
+        html = html.replace("</head>", `${autoPrint}</head>`);
         const iframe = document.createElement("iframe");
         iframe.style.cssText = "position:fixed;top:-9999px;left:0;width:1px;height:1px;border:none;";
         document.body.appendChild(iframe);
         const idoc = iframe.contentWindow.document;
         idoc.open();
-        idoc.write(printHtml);
+        idoc.write(html);
         idoc.close();
         showMessage("Opening print dialog...", 3000, "info");
         setTimeout(() => {
@@ -1117,6 +1094,7 @@ class PreviewController {
         setTimeout(() => iframe.remove(), 120000);
       } else {
         // Desktop mode: write to temp file, open in default browser
+        html = buildExportHtml(this.documentData, this.settings, this.pageCount, this.getPreviewPageHtml(), false, contentFont, imgWidths, imgAligns);
         const ws = window.siyuan && window.siyuan.config && window.siyuan.config.system && window.siyuan.config.system.workspaceDir;
         if (!ws) throw new Error("Cannot resolve workspace directory");
         const base = ws.replace(/\\/g, "/").replace(/\/+$/, "") + "/data";
