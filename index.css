@@ -252,6 +252,11 @@
   cursor: wait;
 }
 
+.pp-export-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 @media (max-width: 900px) {
   .pp-shell {
     grid-template-columns: 1fr;

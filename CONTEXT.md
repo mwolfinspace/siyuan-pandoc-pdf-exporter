@@ -76,6 +76,19 @@ Renders a split-pane dialog:
 - Settings auto-saved on every change (debounced via `schedulePreview`)
 - Mobile blocked with error message (desktop-only for now)
 
+## Web Access Support (HTTP mode)
+
+When SiYuan is accessed via a web browser (not the desktop app), `getFrontend()` returns `"browser-desktop"`. The plugin detects this via `isWeb`:
+
+- **Export button** shows a notification: "Export is only supported in the desktop app. Use Print instead." — The button is also visually dimmed (`.pp-export-disabled`)
+- **Print via Browser** uses a Blob URL instead of `fs.writeFileSync` + `child_process.exec()`:
+  1. Builds export HTML (same as desktop)
+  2. Makes image paths absolute using `window.location.origin`
+  3. Creates `Blob` → `URL.createObjectURL` → `window.open()` in new tab
+  4. User presses Ctrl+P → Save as PDF
+- Top-left kicker shows "Web access" instead of "Desktop"
+- `require("child_process")` is wrapped in try-catch so the plugin loads without error in browser context
+
 ## Next Steps / Ideas
 - Mobile support (simplified UI / different export strategy)
 - Save/load named presets for settings

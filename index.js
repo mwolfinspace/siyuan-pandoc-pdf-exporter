@@ -1,6 +1,7 @@
 const { Dialog, Menu, Plugin, confirm, fetchPost, getFrontend, showMessage } = require("siyuan");
 const fs = require("fs");
-const { execFile } = require("child_process");
+let execFile = null;
+try { execFile = require("child_process").execFile; } catch (e) { /* web mode — child_process unavailable */ }
 
 const PLUGIN_NAME = "siyuan-pandoc-pdf-exporter";
 const SETTINGS_FILE = "settings.json";
@@ -700,10 +701,11 @@ function normalizeMarkText(value) {
 }
 
 class PreviewController {
-  constructor(plugin, root, dialog) {
+  constructor(plugin, root, dialog, isWeb) {
     this.plugin = plugin;
     this.root = root;
     this.dialog = dialog;
+    this.isWeb = isWeb;
     this.documentData = getActiveDocument();
     this.settings = normalizeSettings(plugin.settingsData || {});
     this.fonts = [];
@@ -726,7 +728,7 @@ class PreviewController {
       <main class="pp-preview-area">
         <div class="pp-preview-toolbar">
           <div>
-            <div class="pp-kicker">Print via browser</div>
+            <div class="pp-kicker">${this.isWeb ? "Web access" : "Desktop"} — ${this.isWeb ? "use Print" : "Print via browser"}</div>
             <div class="pp-title">${escapeHtml(this.documentData.title)}</div>
           </div>
           <div class="pp-page-count"><span data-role="page-count">1</span> pages</div>
@@ -819,8 +821,8 @@ class PreviewController {
         </div></div>`}
       </section>
       <div class="pp-button-row">
-        <button class="pp-export-button" data-action="export">Export</button>
-        <button class="pp-export-button pp-print-button" data-action="print">Print via Browser</button>
+        <button class="pp-export-button ${this.isWeb ? "pp-export-disabled" : ""}" data-action="export">${this.isWeb ? "Export (desktop only)" : "Export"}</button>
+        <button class="pp-export-button pp-print-button" data-action="print">${this.isWeb ? "Print" : "Print via Browser"}</button>
       </div>
     `;
   }
@@ -891,7 +893,13 @@ class PreviewController {
     const close = this.root.querySelector('[data-action="close"]');
     if (close) close.addEventListener("click", () => this.dialog.destroy());
     const exportButton = this.root.querySelector('[data-action="export"]');
-    if (exportButton) exportButton.addEventListener("click", () => this.exportPdf(exportButton));
+    if (exportButton) exportButton.addEventListener("click", () => {
+      if (this.isWeb) {
+        showMessage("Export is only supported in the desktop app. Use Print instead.", 5000, "info");
+      } else {
+        this.exportPdf(exportButton);
+      }
+    });
     const printButton = this.root.querySelector('[data-action="print"]');
     if (printButton) printButton.addEventListener("click", () => this.printPreviewPdf(printButton));
   }
@@ -1044,27 +1052,43 @@ class PreviewController {
   async printPreviewPdf(button) {
     const original = button.textContent;
     button.disabled = true;
-    button.textContent = "Opening in browser...";
+    button.textContent = "Opening...";
     try {
       await this.plugin.saveSettings(this.settings);
       const siYuanFont = getComputedStyle(document.body).fontFamily + ", sans-serif";
       const imgWidths = this.settings.separateImageSizes ? this.imageWidths : null;
       const imgAligns = this.settings.separateImageSizes ? this.imageAligns : null;
       let html = buildExportHtml(this.documentData, this.settings, this.pageCount, this.getPreviewPageHtml(), false, siYuanFont, imgWidths, imgAligns);
-      const ws = window.siyuan && window.siyuan.config && window.siyuan.config.system && window.siyuan.config.system.workspaceDir;
-      if (!ws) throw new Error("Cannot resolve workspace directory");
-      const base = ws.replace(/\\/g, "/").replace(/\/+$/, "") + "/data";
-      html = resolveImagePaths(html, base);
-      const tmpDir = base + "/temp/pandoc-pdf-exporter";
-      const absHtml = tmpDir + "/print.html";
-      fs.mkdirSync(tmpDir, { recursive: true });
-      fs.writeFileSync(absHtml, html, "utf-8");
-      // Open in the user's default browser (Ctrl+P → Save as PDF works there)
-      const { exec } = require("child_process");
-      exec(`start "" "${absHtml}"`, (err) => {
-        if (err) throw err;
-        showMessage("Opened in your browser. Press Ctrl+P → Save as PDF.", 8000, "info");
-      });
+      if (this.isWeb) {
+        // Web mode: make asset paths absolute against current origin, open in new tab
+        const origin = window.location.origin;
+        html = html.replace(/(<img\s[^>]*src=["'])(\/[^"']+)(["'][^>]*>)/gi, (match, pre, path, post) => {
+          return pre + origin + path + post;
+        });
+        const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const w = window.open(url, "_blank");
+        if (w) {
+          showMessage("Page opened. Press Ctrl+P → Save as PDF.", 8000, "info");
+        } else {
+          showMessage("Allow popups, or press Ctrl+P directly.", 6000, "info");
+        }
+      } else {
+        // Desktop mode: write to temp file, open in default browser
+        const ws = window.siyuan && window.siyuan.config && window.siyuan.config.system && window.siyuan.config.system.workspaceDir;
+        if (!ws) throw new Error("Cannot resolve workspace directory");
+        const base = ws.replace(/\\/g, "/").replace(/\/+$/, "") + "/data";
+        html = resolveImagePaths(html, base);
+        const tmpDir = base + "/temp/pandoc-pdf-exporter";
+        const absHtml = tmpDir + "/print.html";
+        fs.mkdirSync(tmpDir, { recursive: true });
+        fs.writeFileSync(absHtml, html, "utf-8");
+        const { exec } = require("child_process");
+        exec(`start "" "${absHtml}"`, (err) => {
+          if (err) throw err;
+          showMessage("Opened in your browser. Press Ctrl+P → Save as PDF.", 8000, "info");
+        });
+      }
     } catch (err) {
       console.error(`[${PLUGIN_NAME}] print failed`, err);
       showMessage("Print failed: " + err.message, 5000, "error");
@@ -1075,6 +1099,10 @@ class PreviewController {
   }
 
   async exportPdf(button) {
+    if (this.isWeb) {
+      showMessage("Export is only supported in the desktop app.", 5000, "info");
+      return;
+    }
     const original = button.textContent;
     button.disabled = true;
     button.textContent = "Exporting...";
@@ -1152,6 +1180,7 @@ module.exports = class PandocPdfExporterPlugin extends Plugin {
     super(options);
     this.settingsData = normalizeSettings();
     this.isMobile = ["mobile", "browser-mobile"].includes(getFrontend());
+    this.isWeb = getFrontend() === "browser-desktop";
   }
 
   async onload() {
@@ -1228,7 +1257,7 @@ module.exports = class PandocPdfExporterPlugin extends Plugin {
     });
     const root = dialog.element.querySelector(`#${id}`);
     try {
-      new PreviewController(this, root, dialog);
+      new PreviewController(this, root, dialog, this.isWeb);
     } catch (err) {
       dialog.destroy();
       confirm("Cannot open PDF preview", escapeHtml(err.message || err), () => {});
