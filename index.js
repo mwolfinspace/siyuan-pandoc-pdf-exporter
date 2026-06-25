@@ -144,6 +144,41 @@ function embedImagesAsDataUrls(container) {
   });
 }
 
+function suppressChromeWarning() {
+  if (typeof window === "undefined") return;
+  const KEYWORDS = /Only supported in the Chrome|compatibility issues that cannot be resolved/i;
+  const origShow = window.showMessage;
+  if (origShow) {
+    window.showMessage = function (msg) {
+      if (typeof msg === "string" && KEYWORDS.test(msg)) return;
+      return origShow.apply(this, arguments);
+    };
+  }
+  let observer = null;
+  const startObserver = () => {
+    if (!document.body) { setTimeout(startObserver, 100); return; }
+    observer = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        for (const node of m.addedNodes) {
+          if (node.nodeType !== 1) continue;
+          if (KEYWORDS.test(node.textContent || "")) {
+            if (node.matches && node.matches(".b3-dialog, .fn__none")) continue;
+            node.style.setProperty("display", "none", "important");
+          }
+          node.querySelectorAll("*").forEach((el) => {
+            if (KEYWORDS.test(el.textContent || "")) {
+              el.style.setProperty("display", "none", "important");
+            }
+          });
+        }
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+  };
+  startObserver();
+  setTimeout(() => { if (observer) observer.disconnect(); }, 15000);
+}
+
 function buildMarginBoxCss(settings) {
   const tokens = nowTokens();
   const lines = [];
@@ -1460,6 +1495,8 @@ module.exports = class PandocPdfExporterPlugin extends Plugin {
     <symbol id="iconAlignRight" viewBox="0 0 20 20">
       <path d="M3 3h14v2H3V3zm4 4h10v2H7V7zm-4 4h14v2H3v-2zm4 4h10v2H7v-2z"></path>
     </symbol>`);
+    suppressChromeWarning();
+
     await this.loadSettings();
     const button = this.addTopBar({
       icon: "iconPandocPdfExport",
