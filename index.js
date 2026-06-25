@@ -127,6 +127,20 @@ function loadCdnScript(src) {
 const CDN_HTML2CANVAS = "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
 const CDN_JSPDF = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
 
+function embedImagesAsDataUrls(container) {
+  Array.from(container.querySelectorAll("img")).forEach(img => {
+    if (img.complete && img.naturalWidth > 0 && !img.src.startsWith("data:")) {
+      try {
+        const c = document.createElement("canvas");
+        c.width = img.naturalWidth;
+        c.height = img.naturalHeight;
+        c.getContext("2d").drawImage(img, 0, 0);
+        img.src = c.toDataURL("image/jpeg", 0.92);
+      } catch (e) { /* canvas tainted or CORS — skip */ }
+    }
+  });
+}
+
 function buildMarginBoxCss(settings) {
   const tokens = nowTokens();
   const lines = [];
@@ -838,7 +852,7 @@ class PreviewController {
       </section>
       <div class="pp-button-row">
         <button class="pp-export-button pp-download-pdf-button" data-action="download-pdf">Download PDF</button>
-        <button class="pp-export-button ${this.isWeb ? "pp-export-disabled" : ""}" data-action="export">${this.isWeb ? "Export (desktop only)" : "Export"}</button>
+        <button class="pp-export-button" data-action="export">Export</button>
         <button class="pp-export-button pp-print-button" data-action="print">${this.isWeb ? "Print" : "Print via Browser"}</button>
       </div>
     `;
@@ -910,9 +924,10 @@ class PreviewController {
     const close = this.root.querySelector('[data-action="close"]');
     if (close) close.addEventListener("click", () => this.dialog.destroy());
     const exportButton = this.root.querySelector('[data-action="export"]');
-    if (exportButton) exportButton.addEventListener("click", () => {
+    if (exportButton) exportButton.addEventListener("click", async () => {
       if (this.isWeb) {
-        showMessage("Export is only supported in the desktop app. Use Print instead.", 5000, "info");
+        const ok = await this.tryExportServerSide(exportButton);
+        if (!ok) showMessage("Server-side export unavailable (check pandoc/weasyprint). Use Download PDF instead.", 6000, "info");
       } else {
         this.exportPdf(exportButton);
       }
@@ -1096,6 +1111,8 @@ class PreviewController {
         }
         // Clone preview pages (they already have correct pagination with loaded images)
         const previewPages = pages ? Array.from(pages.querySelectorAll(".pp-page")) : [];
+        // Embed images as data URIs so Chrome's print re-render doesn't lose them
+        previewPages.forEach(page => embedImagesAsDataUrls(page));
         const headStyle = pages ? pages.querySelector("style").outerHTML : "";
         const printStyle = `
     <style>
@@ -1158,6 +1175,93 @@ class PreviewController {
   }
 
   async downloadPdf(button) {
+    const original = button.textContent;
+    button.disabled = true;
+    try {
+      await this.plugin.saveSettings(this.settings);
+      // Try server-side export first (fast, proper images, no CDN deps)
+      const serverOk = await this.tryExportServerSide(button);
+      if (serverOk) return;
+      // Fallback: canvas capture (works without server tools)
+      showMessage("Server-side export unavailable, using canvas capture (slower).", 5000, "info");
+      await this.downloadPdfCanvas(button);
+    } catch (err) {
+      console.error(`[${PLUGIN_NAME}] PDF download failed`, err);
+      showMessage("PDF download failed: " + err.message, 5000, "error");
+    } finally {
+      button.disabled = false;
+      button.textContent = original;
+    }
+  }
+
+  async tryExportServerSide(button) {
+    // Check prerequisites
+    const ws = window.siyuan && window.siyuan.config && window.siyuan.config.system && window.siyuan.config.system.workspaceDir;
+    if (!ws) return false;
+    // Check that the /api/file/putFile endpoint exists (SiYuan kernel API)
+    try {
+      button.textContent = "Building...";
+      const previewBody = this.root ? this.root.querySelector('.pp-page-body') : null;
+      const contentFont = previewBody ? getComputedStyle(previewBody).fontFamily + ", sans-serif" : "";
+      const imgWidths = this.settings.separateImageSizes ? this.imageWidths : null;
+      const imgAligns = this.settings.separateImageSizes ? this.imageAligns : null;
+      const html = buildExportHtml(this.documentData, this.settings, this.pageCount, this.getPreviewPageHtml(), true, contentFont, imgWidths, imgAligns);
+      const base = ws.replace(/\\/g, "/").replace(/\/+$/, "") + "/data";
+      const resolvedHtml = resolveImagePaths(html, base);
+      const relDir = "temp/pandoc-pdf-exporter";
+      const htmlRel = relDir + "/export.html";
+      const pdfRel = relDir + "/export.pdf";
+      const absHtml = base + "/" + htmlRel;
+      const absPdf = base + "/" + pdfRel;
+
+      // Upload HTML to server
+      button.textContent = "Uploading...";
+      const fd = new FormData();
+      fd.append("path", htmlRel);
+      fd.append("file", new Blob([resolvedHtml], { type: "text/html;charset=utf-8" }), "export.html");
+      fd.append("isDir", "false");
+      const upResp = await fetch(window.location.origin + "/api/file/putFile", { method: "POST", body: fd });
+      if (!upResp.ok) return false;
+
+      // Convert via pandoc API
+      button.textContent = "Converting...";
+      const engines = ["weasyprint", "wkhtmltopdf", "pdfroff", "xelatex", "lualatex", "pdflatex"];
+      let lastErr = null;
+      let ok = false;
+      for (const engine of engines) {
+        try {
+          await post("/api/convert/pandoc", {
+            args: ["--from", "html", absHtml, "-o", absPdf, "--pdf-engine=" + engine, "--standalone"],
+          });
+          ok = true;
+          break;
+        } catch (e) { lastErr = e; }
+      }
+      if (!ok) return false;
+
+      // Download PDF
+      button.textContent = "Downloading...";
+      const pdfResp = await fetch(window.location.origin + "/api/file/getFile?path=" + encodeURIComponent(pdfRel));
+      if (!pdfResp.ok) return false;
+      const pdfBlob = await pdfResp.blob();
+
+      const url = URL.createObjectURL(pdfBlob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = ((this.documentData && this.documentData.title) || "document") + ".pdf";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      showMessage("PDF exported via server.", 3000, "info");
+      return true;
+    } catch (err) {
+      console.warn(`[${PLUGIN_NAME}] server-side export failed`, err);
+      return false;
+    }
+  }
+
+  async downloadPdfCanvas(button) {
     const original = button.textContent;
     button.disabled = true;
     button.textContent = "Loading...";
