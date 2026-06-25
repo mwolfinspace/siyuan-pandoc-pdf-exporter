@@ -1063,7 +1063,7 @@ class PreviewController {
       const imgAligns = this.settings.separateImageSizes ? this.imageAligns : null;
       let html;
       if (this.isWeb) {
-        // Ensure images are fully loaded so pagination is accurate
+        // Ensure images are fully loaded so pagination is settled
         const pages = this.root.querySelector('[data-role="pages"]');
         if (pages) {
           const unloaded = Array.from(pages.querySelectorAll("img")).filter(img => !img.complete);
@@ -1076,10 +1076,30 @@ class PreviewController {
             await new Promise(resolve => setTimeout(resolve, 150));
           }
         }
-        // Build fresh print HTML after images have loaded and pagination has settled
-        html = buildExportHtml(this.documentData, this.settings, this.pageCount, this.getPreviewPageHtml(), false, contentFont, imgWidths, imgAligns);
+        // Clone preview pages (they already have correct pagination with loaded images)
+        const paper = getPaper(this.settings);
+        const previewPages = pages ? Array.from(pages.querySelectorAll(".pp-page")) : [];
+        const headStyle = pages ? pages.querySelector("style").outerHTML : "";
+        const printStyle = `
+    <style>
+      @page { size: ${paper.widthMm}mm ${paper.heightMm}mm; margin: 0; }
+      :root { --pp-font-family: ${contentFont}; }
+      body { margin: 0; padding: 0; background: #fff; }
+      .pp-pages { padding: 0; display: block; }
+      .pp-page {
+        break-after: page !important;
+        page-break-after: always !important;
+        box-shadow: none !important;
+        margin: 0 auto !important;
+        overflow: hidden !important;
+      }
+      .pp-page:last-child { break-after: auto !important; page-break-after: auto !important; }
+    </style>`;
         const autoPrint = `<script>var _pp=0;var _ii=setInterval(function(){if(!_pp&&Array.from(document.images).every(function(i){return i.complete})){clearInterval(_ii);_pp=1;setTimeout(function(){window.print()},300)}},100);setTimeout(function(){if(!_pp){clearInterval(_ii);_pp=1;window.print()}},12000);window.onafterprint=function(){_pp=1};<\/script>`;
-        html = html.replace("</head>", `${autoPrint}</head>`);
+        html = `<!doctype html>
+<html><head><meta charset="utf-8"><title>${escapeHtml(this.documentData.title)}</title>${headStyle}${printStyle}${autoPrint}</head><body>
+  <div class="pp-pages">${previewPages.map(p => p.outerHTML).join("")}</div>
+</body></html>`;
         const iframe = document.createElement("iframe");
         iframe.style.cssText = "position:fixed;top:-9999px;left:0;width:1px;height:1px;border:none;";
         document.body.appendChild(iframe);
