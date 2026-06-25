@@ -1056,10 +1056,11 @@ class PreviewController {
     button.textContent = "Opening...";
     try {
       await this.plugin.saveSettings(this.settings);
-      const siYuanFont = getComputedStyle(document.body).fontFamily + ", sans-serif";
+      const previewBody = this.root ? this.root.querySelector('.pp-page-body') : null;
+      const contentFont = previewBody ? getComputedStyle(previewBody).fontFamily + ", sans-serif" : getComputedStyle(document.body).fontFamily + ", sans-serif";
       const imgWidths = this.settings.separateImageSizes ? this.imageWidths : null;
       const imgAligns = this.settings.separateImageSizes ? this.imageAligns : null;
-      let html = buildExportHtml(this.documentData, this.settings, this.pageCount, this.getPreviewPageHtml(), false, siYuanFont, imgWidths, imgAligns);
+      let html = buildExportHtml(this.documentData, this.settings, this.pageCount, this.getPreviewPageHtml(), false, contentFont, imgWidths, imgAligns);
       if (this.isWeb) {
         // Ensure images are fully loaded before capturing the DOM
         const pages = this.root.querySelector('[data-role="pages"]');
@@ -1082,7 +1083,7 @@ class PreviewController {
         const printStyle = `
     <style>
       @page { size: ${paper.widthMm}mm ${paper.heightMm}mm; margin: 0; }
-      :root { --pp-font-family: ${siYuanFont}; }
+      :root { --pp-font-family: ${contentFont}; }
       body { margin: 0; padding: 0; background: #fff; }
       .pp-pages { padding: 0; display: block; }
       .pp-page {
@@ -1149,10 +1150,11 @@ class PreviewController {
     button.textContent = "Exporting...";
     try {
       await this.plugin.saveSettings(this.settings);
-      const siYuanFont = getComputedStyle(document.body).fontFamily + ", sans-serif";
+      const previewBody = this.root ? this.root.querySelector('.pp-page-body') : null;
+      const contentFont = previewBody ? getComputedStyle(previewBody).fontFamily + ", sans-serif" : getComputedStyle(document.body).fontFamily + ", sans-serif";
       const imgWidths = this.settings.separateImageSizes ? this.imageWidths : null;
       const imgAligns = this.settings.separateImageSizes ? this.imageAligns : null;
-      let html = buildExportHtml(this.documentData, this.settings, this.pageCount, this.getPreviewPageHtml(), true, siYuanFont, imgWidths, imgAligns);
+      let html = buildExportHtml(this.documentData, this.settings, this.pageCount, this.getPreviewPageHtml(), true, contentFont, imgWidths, imgAligns);
       const ws = window.siyuan && window.siyuan.config && window.siyuan.config.system && window.siyuan.config.system.workspaceDir;
       if (!ws) throw new Error("Cannot resolve workspace directory");
       const base = ws.replace(/\\/g, "/").replace(/\/+$/, "") + "/data";
