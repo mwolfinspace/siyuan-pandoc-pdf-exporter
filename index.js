@@ -545,6 +545,7 @@ ${marginBoxCss}
       display: grid;
       grid-template-columns: 1fr 1fr 1fr;
       gap: 0.25cm;
+      font-family: var(--pp-font-family, sans-serif);
       font-size: 9pt;
       color: #69707a;
       line-height: 1.25;
