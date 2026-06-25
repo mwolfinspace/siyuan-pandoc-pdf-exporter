@@ -95,13 +95,15 @@ These rules MUST be followed to keep the print output matching the preview:
 ### 3. Content Renders ~1% Taller at Print Resolution
 - Screen pagination at 96 DPI doesn't match print rendering (typically ~300 DPI).
 - Font glyphs, line heights, and image scaling differ enough to cause overflow.
-- **Always** reduce bottom padding by ~3mm (`calc(var(--pp-margin-bottom) - 3mm)`) in the print CSS to give breathing room.
-- Without this, content that fits exactly in preview will overflow in print, creating a blank page.
+- **Always** reduce bottom padding by ~2mm (`calc(var(--pp-margin-bottom) - 2mm)`) in the print CSS to absorb most of the overflow. The minimum padding is 0.8cm to keep the footer (at `bottom: 0.52cm`) safely clear of content.
+- Some documents (heavy text, complex layouts) may have >1% height difference. For these, `overflow: hidden` clips the remaining sub-mm overflow, or the user can set 99% scale in the print dialog.
+- Without this, content that fits exactly in preview will overflow in print, creating blank pages.
 
 ### 4. overflow: hidden on Page Divs Prevents Blank Pages
 - Chrome's print engine may create a new (mostly blank) page for content that overflows the page box, even by sub-pixel amounts.
 - **Always** set `.pp-page { overflow: hidden !important }` in the print CSS to clip tiny overflow.
-- NOTE: Some browsers may still ignore `overflow` in paged media — always combine with the padding reduction in rule #3.
+- WARNING: Chrome's print engine does NOT always honor `overflow: hidden` in paged media. It works for sub-pixel overflow but can fail for larger amounts (>1mm). The primary defense is the padding reduction in rule #3 — `overflow: hidden` is a backup.
+- If blank pages still appear, the user should set 99% scale in the print dialog, which shrinks everything uniformly and prevents overflow entirely.
 
 ### 5. @page margin Must Be 0 in Print CSS
 - `buildStyle(settings, false)` sets `@page` with user's margin values.
@@ -127,6 +129,20 @@ These rules MUST be followed to keep the print output matching the preview:
 - Default browser styles on `<html>` and `<body>` can interfere with CSS page breaking.
 - **Always** include `html, body { margin:0; padding:0; background:#fff; overflow:visible !important; min-height:0 !important; }` in the print CSS.
 
+### 10. Chrome Print Dialog Overrides @page Size
+- `@page { size: 210mm 297mm }` in CSS does NOT auto-select the paper in Chrome's print dialog.
+- Chrome defaults to the last-used paper (often US Letter in US regions, A4 in EU).
+- **Always** instruct the user to manually select the correct paper in the dialog.
+- Similarly, the print dialog's "Margins" setting (Default/Minimum/None) overrides `@page { margin: 0 }`. The user must set margins to "None" in the dialog for the CSS padding to control margins.
+- The print dialog's "Scale" setting defaults to 100 (fit to page). If blank pages still appear, 99% scale shrinks content uniformly and often fixes print-resolution overflow that padding reduction + `overflow: hidden` cannot fully address.
+
+## Known Browser Limitations
+
+1. **`overflow: hidden` in paged media**: Chrome's print engine may ignore `overflow: hidden` on page-breaking elements. This causes content overflow to create new pages instead of being clipped. Workaround: padding reduction + user setting 99% scale.
+2. **Print resolution rendering difference**: Screen (96 DPI) and print (300 DPI) render fonts and images differently. Content can be 1-3% taller in print depending on content mix (text-heavy has larger difference). The ~2mm padding reduction covers ~1%; for heavier documents, 99% scale is needed.
+3. **`@page size` ignored by dialog**: Chrome's print dialog doesn't auto-select the paper size from CSS. Must be set manually.
+4. **Dialog margins override CSS**: Chrome's print dialog "Margins" setting overrides `@page { margin }`. Must be set to "None" for CSS padding to work correctly.
+
 ## Web Access Support (HTTP mode)
 
 When SiYuan is accessed via a web browser (not the desktop app), `getFrontend()` returns `"browser-desktop"`. The plugin detects this via `isWeb`:
@@ -136,7 +152,7 @@ When SiYuan is accessed via a web browser (not the desktop app), `getFrontend()`
   1. Waits for all preview images to load (ensures pagination is settled).
   2. Clones the `.pp-page` elements from the live preview DOM.
   3. Captures the `<style>` from the preview for base CSS.
-  4. Wraps in an iframe with an injected `printStyle` that applies all the fixes from the Lessons Learned section (resolved font, `@page margin:0`, `overflow:hidden`, 3mm padding relief, `:last-child` override, `pointer-events`, html/body reset).
+  4. Wraps in an iframe with an injected `printStyle` that applies all the fixes from the Lessons Learned section (resolved font, `@page margin:0`, `overflow:hidden`, 2mm padding relief with 0.8cm minimum, `:last-child` override, `pointer-events`, html/body reset).
   5. Auto-triggers print via a polling script that waits for all iframe images to load, then calls `window.print()`.
   6. Cleans up the iframe after 120s.
 - Top-left kicker shows "Web access" instead of "Desktop".

@@ -108,7 +108,7 @@ Build a SiYuan plugin that exports the active document to a polished PDF through
    - See `CONTEXT.md` "Lessons Learned" for all the fixes required to match preview.
    - Key issues solved:
      - `@page margin: 0` to prevent browser dialog margins from overriding CSS padding.
-     - `overflow: hidden` + 3mm padding relief to absorb print-resolution rendering differences.
+     - `overflow: hidden` + 2mm padding relief (min 0.8cm) to absorb print-resolution rendering differences.
      - Resolved fonts via `getComputedStyle(.pp-page-body).fontFamily` (CSS variables don't work in iframe).
      - Image pre-loading before DOM capture (prevents stale pagination).
      - `:last-child { break-after: auto !important }` (prevent blank last page).

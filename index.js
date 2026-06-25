@@ -638,14 +638,15 @@ function buildExportHtml(documentData, settings, pageCount, pageHtmls, forPdfEng
 
   // Browser print path: per-page sections (matches preview layout exactly)
   // Reduce top padding 0.3cm to compensate for browser print dialog extra top margin;
-  // reduce bottom padding 0.5mm to give content breathing room vs screen rendering.
+  // reduce bottom padding 2mm (~1% of content height) to absorb print-resolution overflow;
+  // minimum 0.8cm keeps footer (at bottom:0.52cm) safely clear of content.
   const browserCss = `
     html, body { overflow: visible !important; min-height: 0 !important; }
     .pp-export-page {
       break-after: page !important;
       overflow: hidden !important;
       padding-top: max(0cm, calc(var(--pp-margin-top) - 0.3cm)) !important;
-      padding-bottom: max(0.2cm, calc(var(--pp-margin-bottom) - 0.5mm)) !important;
+      padding-bottom: max(0.8cm, calc(var(--pp-margin-bottom) - 2mm)) !important;
     }
     .pp-export-page:last-child { break-after: auto !important; }
     .pp-page-body { overflow: visible !important; }
@@ -1061,6 +1062,7 @@ class PreviewController {
       const contentFont = previewBody ? getComputedStyle(previewBody).fontFamily + ", sans-serif" : getComputedStyle(document.body).fontFamily + ", sans-serif";
       const imgWidths = this.settings.separateImageSizes ? this.imageWidths : null;
       const imgAligns = this.settings.separateImageSizes ? this.imageAligns : null;
+      const paper = getPaper(this.settings);
       let html;
       if (this.isWeb) {
         // Ensure images are fully loaded so pagination is settled
@@ -1077,7 +1079,6 @@ class PreviewController {
           }
         }
         // Clone preview pages (they already have correct pagination with loaded images)
-        const paper = getPaper(this.settings);
         const previewPages = pages ? Array.from(pages.querySelectorAll(".pp-page")) : [];
         const headStyle = pages ? pages.querySelector("style").outerHTML : "";
         const printStyle = `
@@ -1092,7 +1093,7 @@ class PreviewController {
         box-shadow: none !important;
         margin: 0 auto !important;
         overflow: hidden !important;
-        padding-bottom: max(0.2cm, calc(var(--pp-margin-bottom) - 3mm)) !important;
+        padding-bottom: max(0.8cm, calc(var(--pp-margin-bottom) - 2mm)) !important;
       }
       .pp-page:last-child { break-after: auto !important; page-break-after: auto !important; }
       .pp-page-mark { pointer-events: auto !important; }
@@ -1109,7 +1110,7 @@ class PreviewController {
         idoc.open();
         idoc.write(html);
         idoc.close();
-        showMessage("Opening print dialog...", 3000, "info");
+        showMessage("Opening print dialog... Set paper to \"" + paper.label + "\" and margins to None.", 5000, "info");
         setTimeout(() => {
           iframe.contentWindow.focus();
         }, 1000);
@@ -1128,7 +1129,7 @@ class PreviewController {
         const { exec } = require("child_process");
         exec(`start "" "${absHtml}"`, (err) => {
           if (err) throw err;
-          showMessage("Opened in your browser. Press Ctrl+P → Save as PDF.", 8000, "info");
+          showMessage("Opened in your browser. Ctrl+P → Set paper to \"" + paper.label + "\" and margins to None.", 8000, "info");
         });
       }
     } catch (err) {
