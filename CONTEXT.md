@@ -4,7 +4,7 @@
 A full-featured SiYuan plugin that provides WYSIWYG print preview + PDF export with Pandoc/WeasyPrint backends.
 
 ## Files
-- `index.js` (~1500 lines) — Main plugin + PreviewController class
+- `index.js` (~1515 lines) — Main plugin + PreviewController class
 - `index.css` (254 lines) — Preview dialog UI styles
 - `plugin.json` — Metadata (name: siyuan-pandoc-pdf-exporter, author: Xedryk, v1.1.0)
 - `README_EXPORT.md` — User-facing documentation
@@ -40,8 +40,9 @@ Renders a split-pane dialog:
 
 **B. Print via Browser** (`printPreviewPdf`):
 - Two sub-paths:
-  - **Web mode**: Clones preview pages, embeds images as data URIs, renders in hidden iframe with print CSS overrides, auto-triggers `window.print()`.
-  - **Desktop**: Saves temp HTML to workspace, opens in default browser for Ctrl+P.
+  - **Web mode**: Clones preview pages, embeds images as data URIs, renders in hidden iframe with print CSS overrides (`@page { margin: 0 }`, `height` not `min-height`, `overflow: hidden`), auto-triggers `window.print()`.
+  - **Desktop**: Saves temp HTML to workspace, opens in default browser for Ctrl+P. Uses cross-platform `start`/`open`/`xdg-open`.
+- The exported HTML includes `@page { size: …; margin: 0 }` directly in the document so Chrome honours it regardless of dialog margin setting.
 
 **C. Export PDF** (`exportPdf`):
 - Desktop only: builds export HTML with full CSS (`@page` margin boxes), runs WeasyPrint/Pandoc locally.
@@ -56,7 +57,8 @@ Renders a split-pane dialog:
 - Options: Page number toggle, include title, title alignment
 
 ### Key Functions
-- `buildStyle()` — Generates complete CSS with `@page` rules, margin box CSS, typography
+- `buildStyle()` — Generates complete CSS with `@page` rules, margin box CSS, typography. Uses `height` (not `min-height`) on `.pp-export-page` so the element is exactly one page tall, matching the `@page` box.
+- `buildMarginBoxCss()` — Converts header/footer fields to `@top-left`/`@top-center`/etc. CSS (for WeasyPrint)
 - `buildMarginBoxCss()` — Converts header/footer fields to `@top-left`/`@top-center`/etc. CSS (for WeasyPrint)
 - `buildPageMarkHtml()` — Renders header/footer as positioned divs (for browser print)
 - `buildExportHtml()` — Assembles full HTML document (two variants: WeasyPrint vs browser print)
@@ -98,9 +100,9 @@ These rules MUST be followed to keep the print output matching the preview:
 ### 3. Content Renders ~1% Taller at Print Resolution
 - Screen pagination at 96 DPI doesn't match print rendering (typically ~300 DPI).
 - Font glyphs, line heights, and image scaling differ enough to cause overflow.
-- **Always** reduce bottom padding by ~2mm (`calc(var(--pp-margin-bottom) - 2mm)`) in the print CSS to absorb most of the overflow. The minimum padding is 0.8cm to keep the footer (at `bottom: 0.52cm`) safely clear of content.
-- Some documents (heavy text, complex layouts) may have >1% height difference. For these, `overflow: hidden` clips the remaining sub-mm overflow, or the user can set 99% scale in the print dialog.
-- Without this, content that fits exactly in preview will overflow in print, creating blank pages.
+- The primary fix is using **exact page height** (`height: var(--pp-page-height)` instead of `min-height`) combined with `overflow: hidden` on `.pp-export-page`. The exact height prevents the element from growing beyond one physical page; `overflow: hidden` clips the ~1% print-resolution delta that would otherwise push a stray line onto a blank page.
+- The last page uses `overflow: visible; height: auto` so its content is never clipped.
+- Some documents with heavy text or complex layouts may have >1% height difference; for these, the user can set 99% scale in the print dialog as a fallback.
 
 ### 4. overflow: hidden on Page Divs Prevents Blank Pages
 - Chrome's print engine may create a new (mostly blank) page for content that overflows the page box, even by sub-pixel amounts.

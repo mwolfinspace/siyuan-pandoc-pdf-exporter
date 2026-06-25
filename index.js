@@ -486,7 +486,7 @@ ${marginBoxCss}
       ${forExport ? "break-after: page;" : ""}
       box-sizing: border-box;
       width: var(--pp-page-width);
-      min-height: var(--pp-page-height);
+      height: var(--pp-page-height);
       padding: var(--pp-margin-top) var(--pp-margin-right) var(--pp-margin-bottom) var(--pp-margin-left);
       position: relative;
       background: #fff;
@@ -594,12 +594,14 @@ function resolveImagePaths(html, dataDir) {
     if (/^(https?:\/\/|file:\/\/)/i.test(src)) return match;
     let abs;
     if (src.startsWith("/")) {
-      // /data/assets/foo.png or /assets/foo.png → resolve against workspace data dir
       abs = dir + "/" + src.replace(/^\/data\//, "").replace(/^\//, "");
     } else {
       abs = dir + "/" + src.replace(/^\.\//, "");
     }
-    return match.replace(src, "file:///" + abs);
+    // On Linux/Mac the absolute path already starts with /, giving file:////
+    // (four slashes).  Normalise to exactly three by stripping a leading /.
+    const fileUrl = "file:///" + abs.replace(/^\//, "");
+    return match.replace(src, fileUrl);
   });
 }
 
@@ -664,19 +666,30 @@ function buildExportHtml(documentData, settings, pageCount, pageHtmls, forPdfEng
   const cssVars = collectCssVars();
 
   // Browser print path: per-page sections (matches preview layout exactly)
-  // Reduce top padding 0.3cm to compensate for browser print dialog extra top margin;
-  // reduce bottom padding 2mm (~1% of content height) to absorb print-resolution overflow;
-  // minimum 0.8cm keeps footer (at bottom:0.52cm) safely clear of content.
+  // @page size matches the user's chosen paper; @page margin: 0 hands all
+  // whitespace control to the .pp-export-page padding so preview == print.
+  // height (not min-height) prevents the element from growing beyond one
+  // physical page.  overflow: hidden clips the tiny ~1% rendering delta that
+  // would otherwise push a stray line onto a spurious extra blank page.
+  // The last page uses overflow: visible so its content is never cut short.
+  const browserPaper = getPaper(settings);
   const browserCss = `
     html, body { overflow: visible !important; min-height: 0 !important; }
+    @page { size: ${browserPaper.widthMm}mm ${browserPaper.heightMm}mm; margin: 0; }
     .pp-export-page {
       break-after: page !important;
+      page-break-after: always !important;
       overflow: hidden !important;
-      padding-top: max(0cm, calc(var(--pp-margin-top) - 0.3cm)) !important;
-      padding-bottom: max(0.8cm, calc(var(--pp-margin-bottom) - 2mm)) !important;
+      height: var(--pp-page-height) !important;
+      min-height: unset !important;
     }
-    .pp-export-page:last-child { break-after: auto !important; }
-    .pp-page-body { overflow: visible !important; }
+    .pp-export-page:last-child {
+      break-after: auto !important;
+      page-break-after: auto !important;
+      overflow: visible !important;
+      height: auto !important;
+    }
+    .pp-page-body { overflow: visible !important; height: 100% !important; }
   `;
 
   return `<!doctype html>
@@ -1160,8 +1173,17 @@ class PreviewController {
         fs.mkdirSync(tmpDir, { recursive: true });
         fs.writeFileSync(absHtml, html, "utf-8");
         const { exec } = require("child_process");
-        exec(`start "" "${absHtml}"`, (err) => {
-          if (err) throw err;
+        const platform = process.platform;
+        const openCmd = platform === "win32"
+          ? `start "" "${absHtml.replace(/\//g, "\\")}"`
+          : platform === "darwin"
+            ? `open "${absHtml}"`
+            : `xdg-open "${absHtml}"`;
+        exec(openCmd, (err) => {
+          if (err) {
+            showMessage("Could not open browser automatically. File saved to: " + absHtml, 8000, "error");
+            return;
+          }
           showMessage("Opened in your browser. Ctrl+P → Set paper to \"" + paper.label + "\" and margins to None.", 8000, "info");
         });
       }
