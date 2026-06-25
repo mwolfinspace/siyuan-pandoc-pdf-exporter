@@ -1,4 +1,4 @@
-const { Dialog, Menu, Plugin, confirm, fetchPost, getFrontend, showMessage } = require("siyuan");
+const { Dialog, Menu, Plugin, confirm, getFrontend, showMessage } = require("siyuan");
 const fs = require("fs");
 let execFile = null;
 try { execFile = require("child_process").execFile; } catch (e) { /* web mode — child_process unavailable */ }
@@ -43,14 +43,17 @@ const DEFAULT_SETTINGS = {
 };
 
 function post(endpoint, payload) {
-  return new Promise((resolve, reject) => {
-    fetchPost(endpoint, payload || {}, (response) => {
-      if (!response || response.code !== 0) {
-        reject(new Error(response && response.msg ? response.msg : `SiYuan API failed: ${endpoint}`));
-        return;
-      }
-      resolve(response);
-    });
+  return fetch(window.location.origin + endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload || {}),
+  })
+  .then((resp) => resp.json())
+  .then((response) => {
+    if (!response || response.code !== 0) {
+      throw new Error(response && response.msg ? response.msg : `SiYuan API failed: ${endpoint}`);
+    }
+    return response;
   });
 }
 
