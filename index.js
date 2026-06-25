@@ -489,6 +489,7 @@ ${marginBoxCss}
       height: var(--pp-page-height);
       padding: var(--pp-margin-top) var(--pp-margin-right) var(--pp-margin-bottom) var(--pp-margin-left);
       position: relative;
+      overflow: hidden;
       background: #fff;
     }
     .pp-export-page:last-child { break-after: auto; }
@@ -1041,10 +1042,11 @@ class PreviewController {
     target.appendChild(page.outer);
     pages.push(page);
 
+    const overflowTolerance = 4;
     Array.from(source.children).forEach((child) => {
       const clone = child.cloneNode(true);
       page.body.appendChild(clone);
-      if (page.body.scrollHeight > bodyHeight && page.body.children.length > 1) {
+      if (page.body.scrollHeight > bodyHeight + overflowTolerance && page.body.children.length > 1) {
         clone.remove();
         page = this.createPage(pageWidth, pageHeight);
         target.appendChild(page.outer);
@@ -1266,6 +1268,7 @@ class PreviewController {
       const pdfResp = await fetch(window.location.origin + "/api/file/getFile?path=" + encodeURIComponent(pdfRel));
       if (!pdfResp.ok) return false;
       const pdfBlob = await pdfResp.blob();
+      if (pdfBlob.size === 0) return false;
 
       const url = URL.createObjectURL(pdfBlob);
       const link = document.createElement("a");
@@ -1410,6 +1413,7 @@ class PreviewController {
         }
       }
       const pdfBuf = fs.readFileSync(absPdf);
+      if (pdfBuf.length === 0) throw new Error("PDF engine produced empty output. Try installing WeasyPrint.");
       const blob = new Blob([pdfBuf], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
