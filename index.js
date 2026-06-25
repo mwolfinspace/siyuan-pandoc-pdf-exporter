@@ -1060,19 +1060,21 @@ class PreviewController {
       const imgAligns = this.settings.separateImageSizes ? this.imageAligns : null;
       let html = buildExportHtml(this.documentData, this.settings, this.pageCount, this.getPreviewPageHtml(), false, siYuanFont, imgWidths, imgAligns);
       if (this.isWeb) {
-        // Web mode: make asset paths absolute against current origin, open in new tab
-        const origin = window.location.origin;
-        html = html.replace(/(<img\s[^>]*src=["'])(\/[^"']+)(["'][^>]*>)/gi, (match, pre, path, post) => {
-          return pre + origin + path + post;
-        });
-        const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-        const url = URL.createObjectURL(blob);
-        const w = window.open(url, "_blank");
-        if (w) {
-          showMessage("Page opened. Press Ctrl+P → Save as PDF.", 8000, "info");
-        } else {
-          showMessage("Allow popups, or press Ctrl+P directly.", 6000, "info");
-        }
+        // Web mode: render in hidden same-origin iframe, then call print()
+        // Blob URLs have null origin — images and CSS assets would fail to load.
+        const iframe = document.createElement("iframe");
+        iframe.style.cssText = "position:fixed;top:-9999px;left:0;width:1px;height:1px;border:none;";
+        document.body.appendChild(iframe);
+        const idoc = iframe.contentWindow.document;
+        idoc.open();
+        idoc.write(html);
+        idoc.close();
+        showMessage("Opening print dialog...", 3000, "info");
+        setTimeout(() => {
+          iframe.contentWindow.focus();
+          iframe.contentWindow.print();
+          setTimeout(() => iframe.remove(), 3000);
+        }, 500);
       } else {
         // Desktop mode: write to temp file, open in default browser
         const ws = window.siyuan && window.siyuan.config && window.siyuan.config.system && window.siyuan.config.system.workspaceDir;

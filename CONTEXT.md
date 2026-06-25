@@ -81,11 +81,11 @@ Renders a split-pane dialog:
 When SiYuan is accessed via a web browser (not the desktop app), `getFrontend()` returns `"browser-desktop"`. The plugin detects this via `isWeb`:
 
 - **Export button** shows a notification: "Export is only supported in the desktop app. Use Print instead." — The button is also visually dimmed (`.pp-export-disabled`)
-- **Print via Browser** uses a Blob URL instead of `fs.writeFileSync` + `child_process.exec()`:
+- **Print via Browser** uses a hidden same-origin iframe instead of `fs.writeFileSync` + `child_process.exec()`:
   1. Builds export HTML (same as desktop)
-  2. Makes image paths absolute using `window.location.origin`
-  3. Creates `Blob` → `URL.createObjectURL` → `window.open()` in new tab
-  4. User presses Ctrl+P → Save as PDF
+  2. Creates off-screen `<iframe>` (same origin → relative image/CSS URLs resolve correctly)
+  3. Writes HTML into iframe, calls `iframe.contentWindow.print()`
+  4. No popup blocker, no Blob URL null-origin issues
 - Top-left kicker shows "Web access" instead of "Desktop"
 - `require("child_process")` is wrapped in try-catch so the plugin loads without error in browser context
 
