@@ -81,11 +81,12 @@ Renders a split-pane dialog:
 When SiYuan is accessed via a web browser (not the desktop app), `getFrontend()` returns `"browser-desktop"`. The plugin detects this via `isWeb`:
 
 - **Export button** shows a notification: "Export is only supported in the desktop app. Use Print instead." — The button is also visually dimmed (`.pp-export-disabled`)
-- **Print via Browser** uses `fs.writeFileSync` to write HTML to SiYuan's temp directory,
-  then navigates a same-origin popup to `window.location.origin + "/temp/..."` (served
-  directly by the SiYuan HTTP server). Relative paths resolve naturally, no Blob URL
-  null-origin issues, and the browser's print engine sees the full page content.
+- **Print via Browser** uses `fs.writeFileSync` to write HTML to `data/assets/temp-pandoc-export/print.html`
+  (served by SiYuan HTTP server), then navigates a same-origin popup to
+  `window.location.origin + "/assets/temp-pandoc-export/print.html"`.
   Popup is opened before any `await` to stay in the user gesture chain.
+  An auto-print script is injected: on load, `window.print()` opens the
+  browser print dialog automatically; after print/cancel, the tab closes.
 - Top-left kicker shows "Web access" instead of "Desktop"
 - `require("child_process")` is wrapped in try-catch so the plugin loads without error in browser context
 

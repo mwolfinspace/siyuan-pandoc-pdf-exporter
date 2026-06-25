@@ -1063,7 +1063,7 @@ class PreviewController {
         button.textContent = original;
         return;
       }
-      popup.document.write("Loading print preview...");
+      popup.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Preparing print preview...</title><style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#f5f5f5;color:#333}div{text-align:center}.spinner{width:40px;height:40px;margin:0 auto 16px;border:4px solid #ddd;border-top-color:#175199;border-radius:50%;animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}</style></head><body><div><div class="spinner"></div>Preparing print preview...</div></body></html>`);
     }
     try {
       await this.plugin.saveSettings(this.settings);
@@ -1072,19 +1072,22 @@ class PreviewController {
       const imgAligns = this.settings.separateImageSizes ? this.imageAligns : null;
       let html = buildExportHtml(this.documentData, this.settings, this.pageCount, this.getPreviewPageHtml(), false, siYuanFont, imgWidths, imgAligns);
       if (this.isWeb) {
-        // Write to SiYuan's temp directory, then navigate popup to server URL.
-        // Do NOT resolveImagePaths (makes file:/// URIs) — keep relative paths
-        // so images load correctly when served via the SiYuan HTTP server.
+        // Write HTML to /assets/ (served by SiYuan HTTP server), inject auto-print script.
+        // Do NOT resolveImagePaths (makes file:/// URIs) — keep relative paths.
+        const origin = window.location.origin;
+        // Make asset paths absolute so they work from any URL
+        html = html.replace(/(<(?:img|link|script)\s[^>]*?(?:src|href)=["'])(\/)/gi, "$1" + origin + "$2");
+        // Inject auto-print: print dialog opens on load, tab closes after print/cancel
+        html = html.replace("</body>", `<script>window.onload=function(){setTimeout(function(){window.print()},600)};window.onafterprint=function(){setTimeout(function(){window.close()},1e3)};<\/script></body>`);
         const ws = window.siyuan && window.siyuan.config && window.siyuan.config.system && window.siyuan.config.system.workspaceDir;
         if (!ws) throw new Error("Cannot resolve workspace directory");
         const base = ws.replace(/\\/g, "/").replace(/\/+$/, "") + "/data";
-        const tmpDir = base + "/temp/pandoc-pdf-exporter";
+        const tmpDir = base + "/assets/temp-pandoc-export";
         const absHtml = tmpDir + "/print.html";
         fs.mkdirSync(tmpDir, { recursive: true });
         fs.writeFileSync(absHtml, html, "utf-8");
-        const url = window.location.origin + "/temp/pandoc-pdf-exporter/print.html";
+        const url = origin + "/assets/temp-pandoc-export/print.html";
         popup.location.href = url;
-        showMessage("Page opened. Press Ctrl+P → Save as PDF.", 8000, "info");
       } else {
         // Desktop mode: write to temp file, open in default browser
         const ws = window.siyuan && window.siyuan.config && window.siyuan.config.system && window.siyuan.config.system.workspaceDir;
