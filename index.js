@@ -1053,18 +1053,6 @@ class PreviewController {
     const original = button.textContent;
     button.disabled = true;
     button.textContent = "Opening...";
-    // Open popup before any await to stay in the user gesture chain
-    let popup = null;
-    if (this.isWeb) {
-      popup = window.open("", "_blank");
-      if (!popup) {
-        showMessage("Pop-up was blocked. Please allow pop-ups, then try again.", 6000, "info");
-        button.disabled = false;
-        button.textContent = original;
-        return;
-      }
-      popup.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Preparing print preview...</title><style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#f5f5f5;color:#333}div{text-align:center}.spinner{width:40px;height:40px;margin:0 auto 16px;border:4px solid #ddd;border-top-color:#175199;border-radius:50%;animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}</style></head><body><div><div class="spinner"></div>Preparing print preview...</div></body></html>`);
-    }
     try {
       await this.plugin.saveSettings(this.settings);
       const siYuanFont = getComputedStyle(document.body).fontFamily + ", sans-serif";
@@ -1072,22 +1060,28 @@ class PreviewController {
       const imgAligns = this.settings.separateImageSizes ? this.imageAligns : null;
       let html = buildExportHtml(this.documentData, this.settings, this.pageCount, this.getPreviewPageHtml(), false, siYuanFont, imgWidths, imgAligns);
       if (this.isWeb) {
-        // Write HTML to /assets/ (served by SiYuan HTTP server), inject auto-print script.
-        // Do NOT resolveImagePaths (makes file:/// URIs) — keep relative paths.
-        const origin = window.location.origin;
-        // Make asset paths absolute so they work from any URL
-        html = html.replace(/(<(?:img|link|script)\s[^>]*?(?:src|href)=["'])(\/)/gi, "$1" + origin + "$2");
-        // Inject auto-print: print dialog opens on load, tab closes after print/cancel
-        html = html.replace("</body>", `<script>window.onload=function(){setTimeout(function(){window.print()},600)};window.onafterprint=function(){setTimeout(function(){window.close()},1e3)};<\/script></body>`);
-        const ws = window.siyuan && window.siyuan.config && window.siyuan.config.system && window.siyuan.config.system.workspaceDir;
-        if (!ws) throw new Error("Cannot resolve workspace directory");
-        const base = ws.replace(/\\/g, "/").replace(/\/+$/, "") + "/data";
-        const tmpDir = base + "/assets/temp-pandoc-export";
-        const absHtml = tmpDir + "/print.html";
-        fs.mkdirSync(tmpDir, { recursive: true });
-        fs.writeFileSync(absHtml, html, "utf-8");
-        const url = origin + "/assets/temp-pandoc-export/print.html";
-        popup.location.href = url;
+        // Build export HTML but remove forced page breaks — let the browser's print
+        // engine paginate all content naturally across pages.  Override the page-split
+        // CSS that works for WeasyPrint/desktop but breaks iframe-based print().
+        html = html
+          .replace("break-after: page !important", "break-after: auto")
+          .replace("min-height: var(--pp-page-height)", "min-height: 0");
+        // Inject auto-print + auto-close script
+        html = html.replace("</body>", `<script>window.onload=function(){setTimeout(function(){window.print()},800)};window.onafterprint=function(){setTimeout(function(){window.close()},1e3)};<\/script></body>`);
+        // Render in hidden same-origin iframe, then call print()
+        const iframe = document.createElement("iframe");
+        iframe.style.cssText = "position:fixed;top:-9999px;left:0;width:1px;height:1px;border:none;";
+        document.body.appendChild(iframe);
+        const idoc = iframe.contentWindow.document;
+        idoc.open();
+        idoc.write(html);
+        idoc.close();
+        showMessage("Opening print dialog...", 3000, "info");
+        setTimeout(() => {
+          iframe.contentWindow.focus();
+          iframe.contentWindow.print();
+          setTimeout(() => iframe.remove(), 3000);
+        }, 1000);
       } else {
         // Desktop mode: write to temp file, open in default browser
         const ws = window.siyuan && window.siyuan.config && window.siyuan.config.system && window.siyuan.config.system.workspaceDir;
