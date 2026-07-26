@@ -1123,7 +1123,7 @@ class PreviewController {
   async printPreviewPdf(button) {
     const original = button.textContent;
     button.disabled = true;
-    button.textContent = "Opening...";
+    button.textContent = "Processing...";
     try {
       await this.plugin.saveSettings(this.settings);
       const previewBody = this.root ? this.root.querySelector('.pp-page-body') : null;
@@ -1156,7 +1156,7 @@ class PreviewController {
         await Promise.all(previewPages.map(page => embedImagesAsBlobUrls(page, (done, total) => {
           button.textContent = `Downloading images... ${done}/${total}`;
         })));
-        button.textContent = "Opening print dialog...";
+        button.textContent = "Processing...";
         const headStyle = pages ? pages.querySelector("style").outerHTML : "";
         const printStyle = `
     <style>
@@ -1175,7 +1175,7 @@ class PreviewController {
       .pp-page:last-child { break-after: auto !important; page-break-after: auto !important; }
       .pp-page-mark { pointer-events: auto !important; }
     </style>`;
-        const autoPrint = `<script>var _pp=0;var _ii=setInterval(function(){if(!_pp&&Array.from(document.images).every(function(i){return i.complete})){clearInterval(_ii);_pp=1;setTimeout(function(){window.print()},300)}},100);setTimeout(function(){if(!_pp){clearInterval(_ii);_pp=1;window.print()}},12000);window.onafterprint=function(){_pp=1};<\/script>`;
+        const autoPrint = `<script>var _pp=0;function _done(){try{parent.postMessage({type:'siyuan-pdf-print-done'},'*')}catch(e){}}var _ii=setInterval(function(){if(!_pp&&Array.from(document.images).every(function(i){return i.complete})){clearInterval(_ii);_pp=1;setTimeout(function(){window.print()},300)}},100);setTimeout(function(){if(!_pp){clearInterval(_ii);_pp=1;window.print()}},12000);window.onafterprint=function(){_pp=1;_done()};<\/script>`;
         const iframe = document.createElement("iframe");
         iframe.style.cssText = `position:fixed;left:0;top:0;width:${paper.widthMm}mm;height:${paper.heightMm}mm;border:none;opacity:0.01;pointer-events:none;z-index:-1;`;
         document.body.appendChild(iframe);
@@ -1186,12 +1186,24 @@ class PreviewController {
         // Clone preview pages directly into the iframe DOM (avoids outerHTML serialization)
         const target = idoc.querySelector(".pp-pages");
         previewPages.forEach(page => target.appendChild(idoc.importNode(page, true)));
-        showMessage("Opening print dialog... Set paper to \"" + paper.label + "\" and margins to None.", 5000, "info");
-        // Wait for iframe content to settle, then focus and print
+        showMessage("Set paper to \"" + paper.label + "\" and margins to None, then print.", 8000, "info");
+        // Wait for iframe content to settle, then focus
         setTimeout(() => {
           try { iframe.contentWindow.focus(); } catch (_) {}
         }, 1000);
-        setTimeout(() => iframe.remove(), 120000);
+        // Wait for print dialog to close (user clicks Print or Cancel)
+        await new Promise((resolve) => {
+          const handler = (e) => {
+            if (e.data && e.data.type === "siyuan-pdf-print-done") {
+              window.removeEventListener("message", handler);
+              resolve();
+            }
+          };
+          window.addEventListener("message", handler);
+          // Safety timeout: resolve after 120s even if message never arrives
+          setTimeout(() => { window.removeEventListener("message", handler); resolve(); }, 120000);
+        });
+        try { iframe.remove(); } catch (_) {}
       } else {
         // Desktop mode: write to temp file, open in default browser
         html = buildExportHtml(this.documentData, this.settings, this.pageCount, this.getPreviewPageHtml(), false, contentFont, imgWidths, imgAligns);
@@ -1210,12 +1222,15 @@ class PreviewController {
           : platform === "darwin"
             ? `open "${absHtml}"`
             : `xdg-open "${absHtml}"`;
-        exec(openCmd, (err) => {
-          if (err) {
-            showMessage("Could not open browser automatically. File saved to: " + absHtml, 8000, "error");
-            return;
-          }
-          showMessage("Opened in your browser. Ctrl+P → Set paper to \"" + paper.label + "\" and margins to None.", 8000, "info");
+        await new Promise((resolve) => {
+          exec(openCmd, (err) => {
+            if (err) {
+              showMessage("Could not open browser automatically. File saved to: " + absHtml, 8000, "error");
+            } else {
+              showMessage("Opened in your browser. Ctrl+P → Set paper to \"" + paper.label + "\" and margins to None.", 8000, "info");
+            }
+            resolve();
+          });
         });
       }
     } catch (err) {
