@@ -4,9 +4,9 @@
 A full-featured SiYuan plugin that provides WYSIWYG print preview + PDF export with Pandoc/WeasyPrint backends.
 
 ## Files
-- `index.js` (~1515 lines) — Main plugin + PreviewController class
-- `index.css` (254 lines) — Preview dialog UI styles
-- `plugin.json` — Metadata (name: siyuan-pandoc-pdf-exporter, author: Xedryk, v1.1.0)
+- `index.js` (~1395 lines) — Main plugin + PreviewController class
+- `index.css` (~260 lines) — Preview dialog UI styles
+- `plugin.json` — Metadata (name: siyuan-pandoc-pdf-exporter, author: Xedryk, v1.3.0)
 - `README_EXPORT.md` — User-facing documentation
 - `build.ps1` — Build/packaging script
 - `i18n/en_US.json` — English locale strings
@@ -15,13 +15,13 @@ A full-featured SiYuan plugin that provides WYSIWYG print preview + PDF export w
 
 ## Architecture
 
-### Plugin Lifecycle (`PandocPdfExporterPlugin` class, lines 1090-1168)
+### Plugin Lifecycle (`PandocPdfExporterPlugin` class, lines ~1260-1350)
 - `onload()`: Registers topbar icon, loads settings, opens preview dialog
 - `openPreview()`: Creates a SiYuan Dialog → instantiates `PreviewController`
 - Right-click on toolbar button: "Reset print settings" via Menu
 - `loadSettings/saveSettings`: Persists settings.json via SiYuan Data API
 
-### PreviewController (lines 679-1088)
+### PreviewController (lines ~670-1060)
 Renders a split-pane dialog:
 - Left: Live paginated preview (page-by-page with auto page breaks)
 - Right: Settings sidebar (paper size, margins, typography, images, header/footer)
@@ -32,21 +32,20 @@ Renders a split-pane dialog:
 3. `updatePreview()` — Paginates content into `.pp-page` sections, auto-splits overflow
 4. Per-page headers/footers rendered via `buildPageMarkHtml()` with token expansion
 
-#### Export Pipeline (three paths)
-**A. Download PDF** (`downloadPdf`):
-- **Primary (server-side)**: Uploads export HTML to server via `/api/file/putFile`, converts via Pandoc API, downloads PDF via `/api/file/getFile`. Fast, proper images (resolved server-side), no CDN dependency.
-- **Fallback (canvas)**: Captures each preview `.pp-page` as a canvas at 3x scale using `html2canvas`, assembles PDF via `jsPDF`. Matches preview exactly but slow. Used when server-side tools (WeasyPrint/Pandoc) are unavailable.
-- Both paths trigger direct download — no browser print dialog.
+### Export Pipeline (two buttons)
 
-**B. Print via Browser** (`printPreviewPdf`):
+**A. Export** (desktop only — `exportPdf()`):
+- Builds export HTML with full CSS (`@page` margin boxes)
+- Writes temp HTML to `{workspace}/data/temp/pandoc-pdf-exporter/export.html`
+- Runs WeasyPrint locally via `execFile`, falls back to Pandoc API with various engines
+- Downloads the resulting PDF via blob URL
+- Hidden in web/Docker mode (no local tools available)
+
+**B. Print** (`printPreviewPdf()`):
 - Two sub-paths:
-  - **Web mode**: Clones preview pages, embeds images as data URIs, renders in hidden iframe with print CSS overrides (`@page { margin: 0 }`, `height` not `min-height`, `overflow: hidden`), auto-triggers `window.print()`.
+  - **Web mode**: Clones preview pages, embeds images as blob URLs (with progress indicator), renders in hidden iframe with print CSS overrides (`@page { margin: 0 }`, `height` not `min-height`, `overflow: hidden`), auto-triggers `window.print()`.
   - **Desktop**: Saves temp HTML to workspace, opens in default browser for Ctrl+P. Uses cross-platform `start`/`open`/`xdg-open`.
 - The exported HTML includes `@page { size: …; margin: 0 }` directly in the document so Chrome honours it regardless of dialog margin setting.
-
-**C. Export PDF** (`exportPdf`):
-- Desktop only: builds export HTML with full CSS (`@page` margin boxes), runs WeasyPrint/Pandoc locally.
-- Web mode: now also available via `tryExportServerSide` (same server-side path as Download PDF).
 
 ### Settings (normalized via `normalizeSettings()`)
 - Paper: A3/A4/Letter/HD/FHD, portrait/landscape
@@ -74,7 +73,9 @@ Renders a split-pane dialog:
 - Responsive: hides sidebar below 900px
 
 ## Key Design Decisions
-- Two export paths: direct WeasyPrint (CSS margin boxes) vs browser print (positioned divs)
+- Two buttons: Export (desktop, local tools) and Print (browser print dialog)
+- Export uses WeasyPrint/Pandoc locally; hidden in web/Docker mode
+- Print uses browser's native print with iframe injection for preview fidelity
 - Per-image width sliders for fine-grained layout control
 - Headers/footers support Markdown links (`[text](url)`)
 - Font list from SiYuan API + `queryLocalFonts()` (Chrome only)
@@ -148,50 +149,20 @@ These rules MUST be followed to keep the print output matching the preview:
 3. **`@page size` ignored by dialog**: Chrome's print dialog doesn't auto-select the paper size from CSS. Must be set manually.
 4. **Dialog margins override CSS**: Chrome's print dialog "Margins" setting overrides `@page { margin }`. Must be set to "None" for CSS padding to work correctly.
 
-## Download PDF (Direct Generation)
-
-The **Download PDF** button has two paths:
-
-### 1. Server-Side (Primary)
-1. Builds export HTML via `buildExportHtml(forPdfEngine=true)` with resolved image paths.
-2. Uploads HTML to `{workspace}/data/temp/pandoc-pdf-exporter/export.html` via `/api/file/putFile`.
-3. Tries WeasyPrint → wkhtmltopdf → pdfroff → xelatex → lualatex → pdflatex via Pandoc API.
-4. Downloads the resulting PDF via `/api/file/getFile`.
-
-**Benefits**: Fast, proper image handling (resolved on the server), selectable text, no internet dependency, works identically in web and desktop mode.
-
-### 2. Canvas Capture (Fallback)
-1. Waits for all preview images to load.
-2. Loads `html2canvas` and `jsPDF` from CDN on demand.
-3. Captures each `.pp-page` at 3x scale (~288 DPI) as a canvas image.
-4. Assembles JPEG images into a jsPDF document with correct paper dimensions.
-
-**Benefits**: Matches preview exactly (captures screen rendering), no server-side tools needed.
-
-### Comparison
-| Aspect | Server-Side | Canvas |
-|--------|------------|--------|
-| Speed | Fast (seconds) | Slow (10-30s for long docs) |
-| Text | Selectable | Rasterized |
-| Image quality | Vector/text via WeasyPrint | ~288 DPI JPEG |
-| Dependencies | Pandoc/WeasyPrint on server | Internet (CDN) |
-| Preview match | Uses print CSS (may differ) | Pixel-perfect match |
-
 ## Web Access Support (HTTP mode)
 
 When SiYuan is accessed via a web browser (not the desktop app), `getFrontend()` returns `"browser-desktop"`. The plugin detects this via `isWeb`:
 
-- **Export button** (web mode): Now calls `tryExportServerSide` — uploads HTML to server and converts via WeasyPrint/Pandoc. Shows info message if server tools are unavailable.
-- **Download PDF button**: Primary path uses server-side export (fast, proper images). Falls back to canvas capture if server tools unavailable.
-- **Print via Browser** in web mode:
-  1. Waits for all preview images to load (ensures pagination is settled).
+- **Export button**: Hidden in web mode (no local PDF tools available on the client)
+- **Print button** in web mode:
+  1. Waits for all preview images to load (with progress indicator).
   2. Clones the `.pp-page` elements from the live preview DOM.
-  3. Embeds all images as data URIs (prevents blank images in Chrome print re-render).
+  3. Embeds all images as blob URLs via `embedImagesAsBlobUrls()` (with per-image progress callback showing "Downloading images... X/Y").
   4. Captures the `<style>` from the preview for base CSS.
   5. Wraps in an iframe with an injected `printStyle` that applies all the fixes from the Lessons Learned section (resolved font, `@page margin:0`, `overflow:hidden`, 2mm padding relief with 0.8cm minimum, `:last-child` override, `pointer-events`, html/body reset).
   6. Auto-triggers print via a polling script that waits for all iframe images to load, then calls `window.print()`.
   7. Cleans up the iframe after 120s.
-- Top-left kicker shows "Web access" instead of "Desktop".
+- Top-left kicker shows "Web access — use Print".
 - `require("child_process")` is wrapped in try-catch so the plugin loads without error in browser context.
 
 ## Next Steps / Ideas

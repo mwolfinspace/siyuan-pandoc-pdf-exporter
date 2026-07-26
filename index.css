@@ -230,6 +230,10 @@
   margin-top: 16px;
 }
 
+.pp-button-row:empty {
+  display: none;
+}
+
 .pp-export-button {
   flex: 1;
   height: 38px;
@@ -255,14 +259,6 @@
 .pp-export-disabled {
   opacity: 0.5;
   cursor: not-allowed;
-}
-
-.pp-download-pdf-button {
-  background: #2ea44f;
-  color: #fff;
-}
-.pp-download-pdf-button:hover {
-  background: #2c974b;
 }
 
 @media (max-width: 900px) {

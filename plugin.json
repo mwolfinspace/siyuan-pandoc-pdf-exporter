@@ -2,7 +2,7 @@
   "name": "siyuan-pandoc-pdf-exporter",
   "author": "Xedryk",
   "url": "https://github.com/mwolfinspace/siyuan-pandoc-pdf-exporter",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "minAppVersion": "2.9.0",
   "backends": ["all"],
   "frontends": ["desktop", "browser-desktop"],
@@ -13,8 +13,7 @@
     "default": "Office-style print preview and Pandoc based PDF export for the current SiYuan page."
   },
   "readme": {
-    "default": "README_EXPORT.md",
-    "en_US": "README_EXPORT.md"
+    "default": "README_EXPORT.md"
   },
   "keywords": ["pdf", "pandoc", "export", "print", "preview"]
 }
