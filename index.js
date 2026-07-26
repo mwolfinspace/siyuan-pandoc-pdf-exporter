@@ -130,18 +130,20 @@ function loadCdnScript(src) {
 const CDN_HTML2CANVAS = "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
 const CDN_JSPDF = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
 
-function embedImagesAsDataUrls(container) {
-  Array.from(container.querySelectorAll("img")).forEach(img => {
-    if (img.complete && img.naturalWidth > 0 && !img.src.startsWith("data:")) {
+async function embedImagesAsBlobUrls(container) {
+  const tasks = [];
+  container.querySelectorAll("img").forEach(img => {
+    if (!img.complete || img.naturalWidth === 0 || img.src.startsWith("blob:")) return;
+    tasks.push((async () => {
       try {
-        const c = document.createElement("canvas");
-        c.width = img.naturalWidth;
-        c.height = img.naturalHeight;
-        c.getContext("2d").drawImage(img, 0, 0);
-        img.src = c.toDataURL("image/jpeg", 0.92);
-      } catch (e) { /* canvas tainted or CORS — skip */ }
-    }
+        const resp = await fetch(img.src, { credentials: "include" });
+        if (!resp.ok) throw new Error("HTTP " + resp.status);
+        const blob = await resp.blob();
+        img.src = URL.createObjectURL(blob);
+      } catch (_) { /* fetch failed — keep original URL */ }
+    })());
   });
+  await Promise.all(tasks);
 }
 
 function suppressChromeWarning() {
@@ -1148,7 +1150,6 @@ class PreviewController {
       const imgWidths = this.settings.separateImageSizes ? this.imageWidths : null;
       const imgAligns = this.settings.separateImageSizes ? this.imageAligns : null;
       const paper = getPaper(this.settings);
-      let html;
       if (this.isWeb) {
         // Ensure images are fully loaded so pagination is settled
         const pages = this.root.querySelector('[data-role="pages"]');
@@ -1166,7 +1167,7 @@ class PreviewController {
         // Clone preview pages (they already have correct pagination with loaded images)
         const previewPages = pages ? Array.from(pages.querySelectorAll(".pp-page")) : [];
         // Embed images as data URIs so Chrome's print re-render doesn't lose them
-        previewPages.forEach(page => embedImagesAsDataUrls(page));
+        await Promise.all(previewPages.map(page => embedImagesAsBlobUrls(page)));
         const headStyle = pages ? pages.querySelector("style").outerHTML : "";
         const printStyle = `
     <style>
@@ -1186,20 +1187,20 @@ class PreviewController {
       .pp-page-mark { pointer-events: auto !important; }
     </style>`;
         const autoPrint = `<script>var _pp=0;var _ii=setInterval(function(){if(!_pp&&Array.from(document.images).every(function(i){return i.complete})){clearInterval(_ii);_pp=1;setTimeout(function(){window.print()},300)}},100);setTimeout(function(){if(!_pp){clearInterval(_ii);_pp=1;window.print()}},12000);window.onafterprint=function(){_pp=1};<\/script>`;
-        html = `<!doctype html>
-<html><head><meta charset="utf-8"><title>${escapeHtml(this.documentData.title)}</title>${headStyle}${printStyle}${autoPrint}</head><body>
-  <div class="pp-pages">${previewPages.map(p => p.outerHTML).join("")}</div>
-</body></html>`;
         const iframe = document.createElement("iframe");
-        iframe.style.cssText = "position:fixed;top:-9999px;left:0;width:1px;height:1px;border:none;";
+        iframe.style.cssText = `position:fixed;left:0;top:0;width:${paper.widthMm}mm;height:${paper.heightMm}mm;border:none;opacity:0.01;pointer-events:none;z-index:-1;`;
         document.body.appendChild(iframe);
         const idoc = iframe.contentWindow.document;
         idoc.open();
-        idoc.write(html);
+        idoc.write(`<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(this.documentData.title)}</title>${headStyle}${printStyle}${autoPrint}</head><body><div class="pp-pages"></div></body></html>`);
         idoc.close();
+        // Clone preview pages directly into the iframe DOM (avoids outerHTML serialization)
+        const target = idoc.querySelector(".pp-pages");
+        previewPages.forEach(page => target.appendChild(idoc.importNode(page, true)));
         showMessage("Opening print dialog... Set paper to \"" + paper.label + "\" and margins to None.", 5000, "info");
+        // Wait for iframe content to settle, then focus and print
         setTimeout(() => {
-          iframe.contentWindow.focus();
+          try { iframe.contentWindow.focus(); } catch (_) {}
         }, 1000);
         setTimeout(() => iframe.remove(), 120000);
       } else {
