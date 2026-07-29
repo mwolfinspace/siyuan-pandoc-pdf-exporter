@@ -1,6 +1,6 @@
 python -c "import zipfile, os
 src = os.getcwd()
-files = ['icon.png', 'index.css', 'index.js', 'LICENSE', 'plugin.json', 'preview.png', 'README_EXPORT.md']
+files = ['icon.png', 'index.css', 'index.js', 'LICENSE', 'plugin.json', 'preview.png', 'README.md', 'README_EXPORT.md']
 i = os.path.join(src, 'i18n')
 if os.path.isdir(i):
     for f in os.listdir(i):
