@@ -157,7 +157,7 @@ When SiYuan is accessed via a web browser (not the desktop app), `getFrontend()`
 - **Print button** in web mode:
   1. Waits for all preview images to load (with progress indicator).
   2. Clones the `.pp-page` elements from the live preview DOM.
-  3. Embeds all images as blob URLs via `embedImagesAsBlobUrls()` (with per-image progress callback showing "Downloading images... X/Y").
+  3. Embeds all images as blob URLs via `embedImagesForPrint()` (with per-image progress callback; optionally downscaled to the configured print DPI).
   4. Captures the `<style>` from the preview for base CSS.
   5. Wraps in an iframe with an injected `printStyle` that applies all the fixes from the Lessons Learned section (resolved font, `@page margin:0`, `overflow:hidden`, 2mm padding relief with 0.8cm minimum, `:last-child` override, `pointer-events`, html/body reset).
   6. Auto-triggers print via a polling script that waits for all iframe images to load, then calls `window.print()`.
@@ -175,6 +175,13 @@ When SiYuan is accessed via a web browser (not the desktop app), `getFrontend()`
 - Multi-document batch export
 
 ## Changelog
+
+### 1.3.2 — First-print image reliability, print DPI, per-image persistence
+- **First print no longer drops images.** The iframe auto-print now waits for every image to be **fully decoded** (`i.decode()`) + fonts before calling `window.print()` (hard 15s fallback), instead of relying on `complete` alone. The scroll-commit still forces every page into the committed raster region. No more "print twice" workaround.
+- **Live-preview harvest fallback.** If a blob fetch fails/timeouts, the already-rendered preview pixels are captured to a canvas blob so a photo visible in the preview can never be missing in print.
+- **Image DPI setting restored.** New `Image DPI for print` field (default `0` = original resolution). Values like 150/200/300 downscale the print copies of images (via canvas, `webp/jpeg @ 0.85`) → smaller PDFs. Source assets are never modified.
+- **Per-image width/alignment persist.** `imageWidths`/`imageAligns` are saved into settings (`imageWidthsData`/`imageAlignsData`) on slider release / align click and restored when the dialog reopens — so closing the dialog no longer loses each photo's % and position.
+- Image loads before cloning are race-safe (5s cap per image), and pages are **cloned before embedding** so the live preview DOM is never left with blob: URLs.
 
 ### 1.3.1 — Web print: last image on its correct page
 - **Root cause** (documented in Lessons #3/#8-era): the print iframe was sized to ONE page, so Chrome/Firefox only rasterized subframe content within the iframe's layout bounds. Pages below the fold printed blank (Chrome) or pushed/trailed the last image (Firefox).
