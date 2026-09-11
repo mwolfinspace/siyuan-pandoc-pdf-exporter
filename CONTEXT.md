@@ -173,3 +173,12 @@ When SiYuan is accessed via a web browser (not the desktop app), `getFrontend()`
 - Support for table of contents generation
 - Watch file / auto-export on save?
 - Multi-document batch export
+
+## Changelog
+
+### 1.3.1 — Web print: last image on its correct page
+- **Root cause** (documented in Lessons #3/#8-era): the print iframe was sized to ONE page, so Chrome/Firefox only rasterized subframe content within the iframe's layout bounds. Pages below the fold printed blank (Chrome) or pushed/trailed the last image (Firefox).
+- The iframe now spans `pages.length × page-height` (+8mm buffer) so every page is within the rasterized layout bounds.
+- The auto-print script now waits for `document.fonts.ready`, then **scrolls through every page** (`offsetTop` + forced reflow per page) to commit layout, then prints. This guarantees all pages are rendered before the print snapshot.
+- Added float containment in `printStyle` (`.pp-page-body` visible + `::after { clear: both }`) so a floated last image can never straddle its page break onto the previous sheet.
+- (Parked for another session: the whole web print pipeline could be replaced by a self-contained Chromium-based PDF core.)

@@ -1173,11 +1173,20 @@ class PreviewController {
         padding-bottom: max(0.8cm, calc(var(--pp-margin-bottom) - 2mm)) !important;
       }
       .pp-page:last-child { break-after: auto !important; page-break-after: auto !important; }
+      /* Contain floated images inside their page so they can never straddle a
+         page break (fixes the last image bleeding onto the page before it). */
+      .pp-page-body { overflow: visible !important; height: auto !important; min-height: 100% !important; }
+      .pp-page-body::after { content: ""; display: block; clear: both; height: 0; }
       .pp-page-mark { pointer-events: auto !important; }
     </style>`;
-        const autoPrint = `<script>var _pp=0;function _done(){try{parent.postMessage({type:'siyuan-pdf-print-done'},'*')}catch(e){}}var _ii=setInterval(function(){if(!_pp&&Array.from(document.images).every(function(i){return i.complete})){clearInterval(_ii);_pp=1;setTimeout(function(){window.print()},300)}},100);setTimeout(function(){if(!_pp){clearInterval(_ii);_pp=1;window.print()}},12000);window.onafterprint=function(){_pp=1;_done()};<\/script>`;
+        const autoPrint = `<script>var _pp=0;function _done(){try{parent.postMessage({type:'siyuan-pdf-print-done'},'*')}catch(e){}}function _allReady(){return Array.from(document.images).every(function(i){return i.complete;});}function _commit(){try{var ps=document.querySelectorAll('.pp-page');for(var k=0;k<ps.length;k++){window.scrollTo(0,Math.max(0,ps[k].offsetTop-2));void document.body.offsetHeight;}window.scrollTo(0,0);}catch(e){}}var _ii=setInterval(function(){if(_pp||!_allReady())return;var go=function(){if(_pp)return;clearInterval(_ii);_pp=1;_commit();setTimeout(function(){window.print()},400);};if(document.fonts&&document.fonts.ready){document.fonts.ready.then(go);}else{go();}},100);setTimeout(function(){if(!_pp){clearInterval(_ii);_pp=1;_commit();setTimeout(function(){window.print()},200);}},12000);window.onafterprint=function(){_pp=1;_done()};<\/script>`;
+        // The iframe must span ALL pages, not just one: Chrome/Firefox rasterize
+        // subframes only within their layout bounds, so with a one-page-high
+        // iframe every page below the fold prints blank or misplaces the last
+        // image. +8mm buffer covers the last page's auto height.
+        const pagesHeightMm = previewPages.length * paper.heightMm;
         const iframe = document.createElement("iframe");
-        iframe.style.cssText = `position:fixed;left:0;top:0;width:${paper.widthMm}mm;height:${paper.heightMm}mm;border:none;opacity:0.01;pointer-events:none;z-index:-1;`;
+        iframe.style.cssText = `position:fixed;left:0;top:0;width:${paper.widthMm}mm;height:${pagesHeightMm + 8}mm;border:none;opacity:0.01;pointer-events:none;z-index:-1;`;
         document.body.appendChild(iframe);
         const idoc = iframe.contentWindow.document;
         idoc.open();
