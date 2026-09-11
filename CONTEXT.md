@@ -176,6 +176,13 @@ When SiYuan is accessed via a web browser (not the desktop app), `getFrontend()`
 
 ## Changelog
 
+### 1.3.3 — Revert image pipeline to the proven v1.3.1 behavior (keep DPI + persistence)
+- **1.3.2 made print worse** (pages 3–4 rendered with no images, even on repeat prints): the clone-first embedding (`embedImagesForPrint`) + `img.decode()` auto-print replaced the v1.3.1 live-DOM embedding that made "print twice" work. This release reverts ALL image-loading changes back to the 1.3.1 pipeline.
+- Restored `embedImagesAsBlobUrls()` that **mutates the live preview DOM** to `blob:` URLs: a repeat print reuses already-downloaded images instead of re-fetching → the well-known "print twice shows everything" behavior is back.
+- Restored the v1.3.1 auto-print script (images-`complete` + `fonts.ready` + per-page scroll commit, 12s fallback). No `img.decode()` wait.
+- **Kept:** the **Image DPI for print** setting (`imageDpi`, default 0 = original) — the embed function downscales blob copies via canvas before setting `src`, so a smaller PDF is still possible; and **per-image width/alignment persistence** (`imageWidthsData`/`imageAlignsData`).
+- Known state: first print may still drop the last page's image(s) in some browsers; printing a second time with the dialog open renders everything (as it always did before 1.3.2).
+
 ### 1.3.2 — First-print image reliability, print DPI, per-image persistence
 - **First print no longer drops images.** The iframe auto-print now waits for every image to be **fully decoded** (`i.decode()`) + fonts before calling `window.print()` (hard 15s fallback), instead of relying on `complete` alone. The scroll-commit still forces every page into the committed raster region. No more "print twice" workaround.
 - **Live-preview harvest fallback.** If a blob fetch fails/timeouts, the already-rendered preview pixels are captured to a canvas blob so a photo visible in the preview can never be missing in print.

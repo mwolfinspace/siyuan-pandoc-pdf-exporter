@@ -181,64 +181,21 @@ async function downscaleBlob(blob, targetW) {
   }
 }
 
-async function captureLiveImage(liveImg, targetW) {
-  if (!liveImg.naturalWidth) return null;
-  let tw = liveImg.naturalWidth;
-  let th = liveImg.naturalHeight;
-  if (targetW > 0 && tw > targetW) {
-    tw = Math.round(targetW);
-    th = Math.max(1, Math.round(liveImg.naturalHeight * tw / liveImg.naturalWidth));
-  }
-  const canvas = document.createElement("canvas");
-  canvas.width = tw;
-  canvas.height = th;
-  const ctx = canvas.getContext("2d");
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
-  try {
-    ctx.drawImage(liveImg, 0, 0, tw, th);
-  } catch (_) {
-    return null; // cross-origin taint — keep the original URL
-  }
-  const out = (await canvasToBlob(canvas, "image/webp", 0.85)) || (await canvasToBlob(canvas, "image/jpeg", 0.85));
-  return out ? URL.createObjectURL(out) : null;
-}
-
-async function embedImagesForPrint(clonePages, livePages, dpi, onProgress) {
-  const cloneImgs = Array.from(clonePages).flatMap((p) => Array.from(p.querySelectorAll("img")));
-  const liveImgs = Array.from(livePages).flatMap((p) => Array.from(p.querySelectorAll("img")));
-  const total = cloneImgs.length;
+async function embedImagesAsBlobUrls(container, dpi, onProgress) {
+  const imgs = Array.from(container.querySelectorAll("img")).filter(
+    img => img.complete && img.naturalWidth > 0 && !img.src.startsWith("blob:") && !img.src.startsWith("data:")
+  );
+  const total = imgs.length;
   let done = 0;
-  const bump = () => { done++; if (onProgress) onProgress(done, total); };
-  await Promise.all(cloneImgs.map(async (cloneImg, i) => {
-    const liveImg = liveImgs[i] || null;
-    const targetW = liveImg ? imageTargetWidth(liveImg, dpi) : 0;
-    if (cloneImg.src.startsWith("blob:") || cloneImg.src.startsWith("data:")) {
-      if (targetW > 0) {
-        try {
-          const blob = await fetchWithTimeout(cloneImg.src, 10000);
-          const out = await downscaleBlob(blob, targetW).catch(() => blob);
-          cloneImg.src = out instanceof Blob ? URL.createObjectURL(out) : out;
-        } catch (_) { /* keep as-is */ }
-      }
-      bump();
-      return;
-    }
-    let src = null;
+  await Promise.all(imgs.map(async (img) => {
     try {
-      const blob = await fetchWithTimeout(cloneImg.src, 10000);
-      const out = targetW > 0 ? await downscaleBlob(blob, targetW).catch(() => blob) : blob;
-      src = out instanceof Blob ? URL.createObjectURL(out) : out;
-    } catch (_) {
-      src = null; // fetch failed or timed out
-    }
-    if (!src && liveImg) {
-      // Last-resort: harvest the already-rendered preview pixels directly,
-      // so a photo that renders in preview can NEVER be missing in print.
-      src = await captureLiveImage(liveImg, targetW);
-    }
-    if (src) cloneImg.src = src;
-    bump();
+      const blob = await fetchWithTimeout(img.src, 10000);
+      const targetW = dpi > 0 ? imageTargetWidth(img, dpi) : 0;
+      const out = (targetW > 0 && blob instanceof Blob) ? await downscaleBlob(blob, targetW).catch(() => blob) : blob;
+      img.src = out instanceof Blob ? URL.createObjectURL(out) : out;
+    } catch (_) { /* fetch failed — keep original URL */ }
+    done++;
+    if (onProgress) onProgress(done, total);
   }));
 }
 
@@ -1257,36 +1214,33 @@ class PreviewController {
       const paper = getPaper(this.settings);
       if (this.isWeb) {
         // Ensure images are fully loaded so pagination is settled.
-        // Each image gets a 5s cap so one slow image can't stall the whole run.
         const pages = this.root.querySelector('[data-role="pages"]');
-        if (!pages) throw new Error("Preview not ready — reopen the dialog and try again.");
-        const unloaded = Array.from(pages.querySelectorAll("img")).filter(img => !img.complete);
-        if (unloaded.length > 0) {
-          button.textContent = `Loading images... 0/${unloaded.length}`;
-          let loaded = 0;
-          await Promise.all(unloaded.map(img => new Promise(resolve => {
-            if (img.complete) { loaded++; button.textContent = `Loading images... ${loaded}/${unloaded.length}`; resolve(); return; }
-            let settled = false;
-            const finish = () => { if (settled) return; settled = true; loaded++; button.textContent = `Loading images... ${loaded}/${unloaded.length}`; resolve(); };
-            img.addEventListener("load", finish, { once: true });
-            img.addEventListener("error", finish, { once: true });
-            setTimeout(finish, 5000);
-          })));
-          await new Promise(resolve => setTimeout(resolve, 150));
+        if (pages) {
+          const unloaded = Array.from(pages.querySelectorAll("img")).filter(img => !img.complete);
+          if (unloaded.length > 0) {
+            button.textContent = `Loading images... 0/${unloaded.length}`;
+            let loaded = 0;
+            await Promise.all(unloaded.map(img => new Promise(resolve => {
+              img.addEventListener("load", () => { loaded++; button.textContent = `Loading images... ${loaded}/${unloaded.length}`; resolve(); }, { once: true });
+              img.addEventListener("error", () => { loaded++; button.textContent = `Loading images... ${loaded}/${unloaded.length}`; resolve(); }, { once: true });
+            })));
+            await new Promise(resolve => setTimeout(resolve, 150));
+          }
         }
-        // Clone the preview pages WITHOUT touching the live preview DOM, so a
-        // cancelled/repeat print always starts from the same clean state.
-        const livePages = Array.from(pages.querySelectorAll(".pp-page"));
-        const previewPages = livePages.map(p => p.cloneNode(true));
-        // Embed every image into the CLONES. With imageDpi > 0 copies are
-        // downscaled to that DPI (smaller PDF); live-rendered pixels are used as
-        // a last resort so a photo shown in the preview can never be missing in
-        // print. Original assets are never modified.
-        await embedImagesForPrint(previewPages, livePages, Math.max(0, Number(this.settings.imageDpi) || 0), (done, total) => {
-          button.textContent = total > 0 ? `Downloading images... ${done}/${total}` : "Processing...";
-        });
+        // Use the live preview pages (they already have correct pagination with loaded images).
+        // Embedding mutates these to blob: URLs, so printing again reuses the
+        // already-downloaded images instead of re-fetching them.
+        const previewPages = pages ? Array.from(pages.querySelectorAll(".pp-page")) : [];
+        const totalImages = previewPages.reduce((sum, p) => sum + p.querySelectorAll("img").length, 0);
+        if (totalImages > 0) {
+          button.textContent = `Downloading images... 0/${totalImages}`;
+        }
+        const dpi = Math.max(0, Number(this.settings.imageDpi) || 0);
+        await Promise.all(previewPages.map(page => embedImagesAsBlobUrls(page, dpi, (done, total) => {
+          button.textContent = `Downloading images... ${done}/${total}`;
+        })));
         button.textContent = "Processing...";
-        const headStyle = pages.querySelector("style").outerHTML;
+        const headStyle = pages ? pages.querySelector("style").outerHTML : "";
         const printStyle = `
     <style>
       @page { size: ${paper.widthMm}mm ${paper.heightMm}mm; margin: 0; }
@@ -1316,19 +1270,15 @@ class PreviewController {
         const autoPrint = `<script>
           var _pp=0;
           function _done(){try{parent.postMessage({type:'siyuan-pdf-print-done'},'*')}catch(e){}}
-          function _allReady(){var imgs=Array.from(document.images);return imgs.length===0||imgs.every(function(i){return i.complete&&i.naturalWidth>0;});}
+          function _allReady(){return Array.from(document.images).every(function(i){return i.complete;});}
           function _commit(){try{var ps=document.querySelectorAll('.pp-page');for(var k=0;k<ps.length;k++){window.scrollTo(0,Math.max(0,ps[k].offsetTop-2));void document.body.offsetHeight;}window.scrollTo(0,0);}catch(e){}}
-          function _fire(){if(_pp)return;_commit();setTimeout(function(){if(_pp)return;_pp=1;window.print()},500);}
           var _ii=setInterval(function(){
-            if(_pp)return;
-            if(!_allReady())return;
-            Promise.all(Array.from(document.images).map(function(i){return i.decode().catch(function(){})})).then(function(){
-              if(_pp)return;
-              if(document.fonts&&document.fonts.ready){return document.fonts.ready.then(_fire);}
-              _fire();
-            });
-          },150);
-          setTimeout(function(){if(!_pp)_fire();},15000);
+            if(_pp||!_allReady())return;
+            var go=function(){if(_pp)return;clearInterval(_ii);_pp=1;_commit();setTimeout(function(){window.print()},400);};
+            if(document.fonts&&document.fonts.ready){document.fonts.ready.then(go);}
+            else{go();}
+          },100);
+          setTimeout(function(){if(!_pp){clearInterval(_ii);_pp=1;_commit();setTimeout(function(){window.print()},200);}},12000);
           window.onafterprint=function(){_pp=1;_done()};
         <\/script>`;
         // The iframe must span ALL pages, not just one: Chrome/Firefox rasterize
